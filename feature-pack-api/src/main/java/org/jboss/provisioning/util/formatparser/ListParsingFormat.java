@@ -15,23 +15,26 @@
  * limitations under the License.
  */
 
-package org.jboss.provisioning.spec.type;
+package org.jboss.provisioning.util.formatparser;
 
 /**
- * @author aloubyansky
  *
+ * @author Alexey Loubyansky
  */
-public class ListParsingFormat implements ParsingFormat {
+public class ListParsingFormat extends ParsingFormatBase {
 
-    public static final ListParsingFormat INSTANCE = new ListParsingFormat();
+    private static final ListParsingFormat INSTANCE = new ListParsingFormat();
 
-    @Override
-    public String getName() {
-        return "List";
+    public static ListParsingFormat getInstance() {
+        return INSTANCE;
+    }
+
+    protected ListParsingFormat() {
+        super("List");
     }
 
     @Override
-    public void react(ParsingContext ctx) throws ParsingException {
+    public void react(ParsingContext ctx) throws FormatParsingException {
         switch(ctx.charNow()) {
             case ',' :
                 ctx.popFormats();
@@ -45,23 +48,14 @@ public class ListParsingFormat implements ParsingFormat {
     }
 
     @Override
-    public void pushed(ParsingContext ctx) throws ParsingException {
-    }
-
-    @Override
-    public void deal(ParsingContext ctx) throws ParsingException {
+    public void deal(ParsingContext ctx) throws FormatParsingException {
         if(!Character.isWhitespace(ctx.charNow())) {
-            ctx.pushFormat(WildcardParsingFormat.INSTANCE);
+            ctx.pushFormat(WildcardParsingFormat.getInstance());
         }
     }
 
     @Override
-    public String toString() {
-        return getName();
-    }
-
-    @Override
-    public void eol(ParsingContext ctx) throws ParsingException {
-        throw new ParsingException("Format " + getName() + " has not ended");
+    public void eol(ParsingContext ctx) throws FormatParsingException {
+        throw new FormatParsingException("Format " + getName() + " has not ended");
     }
 }

@@ -15,16 +15,16 @@
  * limitations under the License.
  */
 
-package org.jboss.provisioning.spec.type;
+package org.jboss.provisioning.util.formatparser;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * @author aloubyansky
  *
+ * @author Alexey Loubyansky
  */
-public class ListFormatCallbackHandler extends ParsingCallbackHandler {
+public class ListFormatCallbackHandler extends FormatContentHandler {
 
     private final List<Object> list = new ArrayList<>();
 
@@ -33,17 +33,12 @@ public class ListFormatCallbackHandler extends ParsingCallbackHandler {
     }
 
     @Override
-    public void addChild(ParsingCallbackHandler childHandler) throws ParsingException {
+    public void addChild(FormatContentHandler childHandler) throws FormatParsingException {
         list.add(childHandler.getParsedValue());
     }
 
     @Override
-    public void character(char ch) throws ParsingException {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Object getParsedValue() throws ParsingException {
+    public Object getParsedValue() throws FormatParsingException {
         return list;
     }
 }

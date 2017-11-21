@@ -15,21 +15,26 @@
  * limitations under the License.
  */
 
-package org.jboss.provisioning.spec.type;
+package org.jboss.provisioning.type;
+
+import org.jboss.provisioning.ProvisioningException;
 
 /**
- * @author aloubyansky
  *
+ * @author Alexey Loubyansky
  */
-public interface ParsingFormat {
+public class ParameterTypeNotFoundException extends ProvisioningException {
 
-    String getName();
+    /**
+     *
+     */
+    private static final long serialVersionUID = 1L;
 
-    void pushed(ParsingContext ctx) throws ParsingException;
+    public ParameterTypeNotFoundException(String message) {
+        super(message);
+    }
 
-    void react(ParsingContext ctx) throws ParsingException;
-
-    void deal(ParsingContext ctx) throws ParsingException;
-
-    void eol(ParsingContext ctx) throws ParsingException;
+    public ParameterTypeNotFoundException(String message, Throwable t) {
+        super(message, t);
+    }
 }

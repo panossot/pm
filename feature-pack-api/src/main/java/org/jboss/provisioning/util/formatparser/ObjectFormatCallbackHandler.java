@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.jboss.provisioning.spec.type;
+package org.jboss.provisioning.util.formatparser;
 
 import java.util.Collections;
 import java.util.Map;
@@ -23,10 +23,10 @@ import java.util.Map;
 import org.jboss.provisioning.util.PmCollections;
 
 /**
- * @author aloubyansky
  *
+ * @author Alexey Loubyansky
  */
-public class ObjectFormatCallbackHandler extends ParsingCallbackHandler {
+public class ObjectFormatCallbackHandler extends FormatContentHandler {
 
     Map<String, Object> map = Collections.emptyMap();
 
@@ -38,27 +38,19 @@ public class ObjectFormatCallbackHandler extends ParsingCallbackHandler {
      * @see org.jboss.provisioning.spec.type.ParsingCallbackHandler#addChild(org.jboss.provisioning.spec.type.ParsingCallbackHandler)
      */
     @Override
-    public void addChild(ParsingCallbackHandler childHandler) throws ParsingException {
-        if(!childHandler.getFormat().getName().equals(NameValueParsingFormat.INSTANCE.getName())) {
-            throw new ParsingException("Object can't accept " + childHandler.getFormat());
+    public void addChild(FormatContentHandler childHandler) throws FormatParsingException {
+        if(!childHandler.getFormat().getName().equals(NameValueParsingFormat.getInstance().getName())) {
+            throw new FormatParsingException("Object can't accept " + childHandler.getFormat());
         }
         NameValueFormatCallbackHandler nameValue = (NameValueFormatCallbackHandler) childHandler;
         map = PmCollections.putLinked(map, nameValue.name, nameValue.value);
     }
 
     /* (non-Javadoc)
-     * @see org.jboss.provisioning.spec.type.ParsingCallbackHandler#character(char)
-     */
-    @Override
-    public void character(char ch) throws ParsingException {
-        throw new UnsupportedOperationException();
-    }
-
-    /* (non-Javadoc)
      * @see org.jboss.provisioning.spec.type.ParsingCallbackHandler#getParsedValue()
      */
     @Override
-    public Object getParsedValue() throws ParsingException {
+    public Object getParsedValue() throws FormatParsingException {
         return map;
     }
 }

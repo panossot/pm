@@ -15,21 +15,33 @@
  * limitations under the License.
  */
 
-package org.jboss.provisioning.spec.type;
+package org.jboss.provisioning.util.formatparser;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * @author aloubyansky
  *
+ * @author Alexey Loubyansky
  */
-public class ParserImpl implements ParsingContext {
+public class FormatParser implements ParsingContext {
+
+    public static Object parse(String str) throws FormatParsingException {
+        return parse(DefaultFormatContentHandlerFactory.getInstance(), WildcardParsingFormat.getInstance(), str);
+    }
+
+    public static Object parse(ParsingFormat format, String str) throws FormatParsingException {
+        return parse(DefaultFormatContentHandlerFactory.getInstance(), format, str);
+    }
+
+    public static Object parse(FormatContentHandlerFactory cbFactory, ParsingFormat format, String str) throws FormatParsingException {
+        return new FormatParser(cbFactory, format, str).parse();
+    }
 
     private final ParsingFormat rootFormat;
-    private final ParsingCallbackHandlerFactory cbFactory;
+    private final FormatContentHandlerFactory cbFactory;
 
-    private List<ParsingCallbackHandler> cbStack = new ArrayList<>();
+    private List<FormatContentHandler> cbStack = new ArrayList<>();
 
     private String str;
     private int chI;
@@ -38,34 +50,36 @@ public class ParserImpl implements ParsingContext {
     private boolean breakHandling;
     private boolean bounced;
 
-    public ParserImpl(ParsingFormat rootFormat, ParsingCallbackHandlerFactory cbFactory) {
+    public FormatParser(FormatContentHandlerFactory cbFactory, ParsingFormat rootFormat, String str) {
         this.rootFormat = rootFormat;
         this.cbFactory = cbFactory;
+        this.str = str;
     }
 
-    public Object parse(String str) throws ParsingException {
+    public Object parse() throws FormatParsingException {
         if(str == null) {
             return null;
         }
 
-        this.str = str;
         chI = 0;
 
-        final ParsingCallbackHandler rootCb = cbFactory.forFormat(rootFormat, chI);
+        final FormatContentHandler rootCb = cbFactory.forFormat(rootFormat, chI);
         if (!str.isEmpty()) {
             cbStack.add(rootCb);
             try {
                 doParse();
-            } catch(ParsingException e) {
+            } catch(FormatParsingException e) {
                 final StringBuilder buf = new StringBuilder();
-                buf.append("Parsing of '").append(str).append("' failed at index ").append(chI);
-                throw new ParsingException(buf.toString(), e);
+                buf.append("Parsing of '").append(str).append("' failed at index ").append(chI)
+                .append(" while parsing format ").append(cbStack.get(formatIndex).format)
+                .append(" started on index ").append(cbStack.get(formatIndex).strIndex);
+                throw new FormatParsingException(buf.toString(), e);
             }
         }
         return rootCb.getParsedValue();
     }
 
-    private void doParse() throws ParsingException {
+    private void doParse() throws FormatParsingException {
         rootFormat.pushed(this);
 
         while (++chI < str.length()) {
@@ -74,7 +88,7 @@ public class ParserImpl implements ParsingContext {
             breakHandling = false;
             bounced = false;
             while (formatIndex > 0 && !breakHandling) {
-                final ParsingCallbackHandler cb = cbStack.get(--formatIndex);
+                final FormatContentHandler cb = cbStack.get(--formatIndex);
                 cb.getFormat().react(this);
             }
 
@@ -88,7 +102,7 @@ public class ParserImpl implements ParsingContext {
         }
 
         for (int i = cbStack.size() - 1; i >= 0; --i) {
-            final ParsingCallbackHandler ended = cbStack.get(i);
+            final FormatContentHandler ended = cbStack.get(i);
             ended.getFormat().eol(this);
             if (i > 0) {
                 cbStack.get(i - 1).addChild(ended);
@@ -97,7 +111,7 @@ public class ParserImpl implements ParsingContext {
     }
 
     @Override
-    public void pushFormat(ParsingFormat format) throws ParsingException {
+    public void pushFormat(ParsingFormat format) throws FormatParsingException {
         if(formatIndex != cbStack.size() - 1) {
             final StringBuilder buf = new StringBuilder();
             buf.append(cbStack.get(0).getFormat());
@@ -110,7 +124,7 @@ public class ParserImpl implements ParsingContext {
                     buf.append('!');
                 }
             }
-            throw new ParsingException("Child formats need to be popped: " + buf);
+            throw new FormatParsingException("Child formats need to be popped: " + buf);
         }
         breakHandling = true;
         cbStack.add(cbFactory.forFormat(format, chI));
@@ -120,13 +134,13 @@ public class ParserImpl implements ParsingContext {
     }
 
     @Override
-    public void popFormats() throws ParsingException {
+    public void popFormats() throws FormatParsingException {
         breakHandling = true;
         if(formatIndex == cbStack.size() - 1) {
             return;
         }
         for(int i = cbStack.size() - 1; i > formatIndex; --i) {
-            final ParsingCallbackHandler ended = cbStack.remove(i);
+            final FormatContentHandler ended = cbStack.remove(i);
             //System.out.println("poppedFormat: " + ended.getFormat());
             if(!cbStack.isEmpty()) {
                 cbStack.get(i - 1).addChild(ended);
@@ -135,12 +149,24 @@ public class ParserImpl implements ParsingContext {
     }
 
     @Override
-    public void end() throws ParsingException {
+    public void end() throws FormatParsingException {
         breakHandling = true;
         for(int i = cbStack.size() - 1; i >= formatIndex; --i) {
-            final ParsingCallbackHandler ended = cbStack.remove(i);
+            final FormatContentHandler ended = cbStack.remove(i);
             if(!cbStack.isEmpty()) {
                 cbStack.get(i - 1).addChild(ended);
+            }
+        }
+        --formatIndex;
+
+        if(!cbStack.isEmpty() && cbStack.get(formatIndex).format.isWrapper()) {
+            while (formatIndex > 0) {
+                final FormatContentHandler ended = cbStack.get(formatIndex);
+                if(!ended.format.isWrapper()) {
+                    break;
+                }
+                cbStack.remove(formatIndex--);
+                cbStack.get(formatIndex).addChild(ended);
             }
         }
     }
@@ -162,7 +188,7 @@ public class ParserImpl implements ParsingContext {
     }
 
     @Override
-    public void content() throws ParsingException {
+    public void content() throws FormatParsingException {
         cbStack.get(cbStack.size() - 1).character(charNow());
     }
 }

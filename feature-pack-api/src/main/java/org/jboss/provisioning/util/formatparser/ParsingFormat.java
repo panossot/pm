@@ -15,29 +15,23 @@
  * limitations under the License.
  */
 
-package org.jboss.provisioning.spec.type;
+package org.jboss.provisioning.util.formatparser;
 
 /**
- * @author aloubyansky
  *
+ * @author Alexey Loubyansky
  */
-public abstract class ParsingCallbackHandler {
+public interface ParsingFormat {
 
-    protected final ParsingFormat format;
-    protected final int strIndex;
+    String getName();
 
-    public ParsingCallbackHandler(ParsingFormat format, int strIndex) {
-        this.format = format;
-        this.strIndex = strIndex;
-    }
+    boolean isWrapper();
 
-    public ParsingFormat getFormat() {
-        return format;
-    }
+    void pushed(ParsingContext ctx) throws FormatParsingException;
 
-    abstract void addChild(ParsingCallbackHandler childHandler) throws ParsingException;
+    void react(ParsingContext ctx) throws FormatParsingException;
 
-    abstract void character(char ch) throws ParsingException;
+    void deal(ParsingContext ctx) throws FormatParsingException;
 
-    abstract Object getParsedValue() throws ParsingException;
+    void eol(ParsingContext ctx) throws FormatParsingException;
 }

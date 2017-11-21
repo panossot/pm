@@ -15,13 +15,13 @@
  * limitations under the License.
  */
 
-package org.jboss.provisioning.spec.type;
+package org.jboss.provisioning.util.formatparser;
 
 /**
- * @author aloubyansky
  *
+ * @author Alexey Loubyansky
  */
-public class NameValueFormatCallbackHandler extends ParsingCallbackHandler {
+public class NameValueFormatCallbackHandler extends FormatContentHandler {
 
     String name;
     Object value;
@@ -34,32 +34,24 @@ public class NameValueFormatCallbackHandler extends ParsingCallbackHandler {
      * @see org.jboss.provisioning.spec.type.ParsingCallbackHandler#addChild(org.jboss.provisioning.spec.type.ParsingCallbackHandler)
      */
     @Override
-    public void addChild(ParsingCallbackHandler childHandler) throws ParsingException {
+    public void addChild(FormatContentHandler childHandler) throws FormatParsingException {
         if(name == null) {
-            if(!childHandler.getFormat().getName().equals(StringParsingFormat.INSTANCE.getName())) {
-                throw new ParsingException("The name of the entry hasn't been initialized and it can't be " + childHandler.getFormat());
+            if(!childHandler.getFormat().getName().equals(StringParsingFormat.getInstance().getName())) {
+                throw new FormatParsingException("The name of the entry hasn't been initialized and it can't be " + childHandler.getFormat());
             }
             name = childHandler.getParsedValue().toString();
         } else if(value != null) {
-            throw new ParsingException("The value has already been initialized");
+            throw new FormatParsingException("The value has already been initialized for the name '" + name + "'");
         } else {
             value = childHandler.getParsedValue();
         }
     }
 
     /* (non-Javadoc)
-     * @see org.jboss.provisioning.spec.type.ParsingCallbackHandler#character(char)
-     */
-    @Override
-    public void character(char ch) throws ParsingException {
-        throw new UnsupportedOperationException();
-    }
-
-    /* (non-Javadoc)
      * @see org.jboss.provisioning.spec.type.ParsingCallbackHandler#getParsedValue()
      */
     @Override
-    public Object getParsedValue() throws ParsingException {
+    public Object getParsedValue() throws FormatParsingException {
         throw new UnsupportedOperationException();
     }
 }

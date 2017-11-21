@@ -15,13 +15,31 @@
  * limitations under the License.
  */
 
-package org.jboss.provisioning.spec.type;
+package org.jboss.provisioning.util.formatparser;
 
 /**
- * @author aloubyansky
  *
+ * @author Alexey Loubyansky
  */
-public interface ParsingCallbackHandlerFactory {
+public class StringParsingFormat extends ParsingFormatBase {
 
-    ParsingCallbackHandler forFormat(ParsingFormat format, int strIndex) throws ParsingException;
+    private static final StringParsingFormat INSTANCE = new StringParsingFormat();
+
+    public static StringParsingFormat getInstance() {
+        return INSTANCE;
+    }
+
+    protected StringParsingFormat() {
+        super("String");
+    }
+
+    @Override
+    public void pushed(ParsingContext ctx) throws FormatParsingException {
+        ctx.content();
+    }
+
+    @Override
+    public void deal(ParsingContext ctx) throws FormatParsingException {
+        ctx.content();
+    }
 }

@@ -59,12 +59,12 @@ public class ResolvedFeature extends CapabilityProvider implements ProvisionedFe
     private byte batchControl;
 
     ResolvedFeature(ResolvedFeatureId id, ResolvedFeatureSpec spec, FeatureConfig fc, Map<ResolvedFeatureId, FeatureDependencySpec> resolvedDeps, int includeNo)
-            throws ProvisioningDescriptionException {
+            throws ProvisioningException {
         this.includeNo = includeNo;
         this.id = id;
         this.spec = spec;
         this.deps = resolvedDeps;
-        initParams(spec, fc);
+        initParams(fc);
     }
 
     private ResolvedFeature(ResolvedFeatureId id, ResolvedFeatureSpec spec, Map<String, String> params,
@@ -80,32 +80,35 @@ public class ResolvedFeature extends CapabilityProvider implements ProvisionedFe
         return new ResolvedFeature(id, spec, params.size() > 1 ? new HashMap<>(params) : params, deps.size() > 1 ? new LinkedHashMap<>(deps) : deps, includeNo);
     }
 
-    private void initParams(ResolvedFeatureSpec spec, FeatureConfig fc) throws ProvisioningDescriptionException {
-        if (fc.hasParams()) {
-            if (!spec.xmlSpec.hasParams()) {
-                throw new ProvisioningDescriptionException("Features of type " + spec.id + " don't accept any parameters: " + params);
+    private void initParams(FeatureConfig fc) throws ProvisioningException {
+        if(!fc.hasParams()) {
+            this.params = Collections.emptyMap();
+            return;
+        }
+
+        if (!spec.xmlSpec.hasParams()) {
+            throw new ProvisioningDescriptionException(spec.id + " features don't accept any parameters: " + fc);
+        }
+        final Map<String, String> params = fc.getParams();
+        if (params.size() > spec.xmlSpec.getParamsTotal()) {
+            throw new ProvisioningDescriptionException("Provided parameters " + params.keySet() + " do not match " + spec.id
+                    + " parameters " + spec.xmlSpec.getParamNames());
+        }
+        if (spec.xmlSpec.getParamsTotal() == 1) {
+            final Entry<String, String> param = params.entrySet().iterator().next();
+            if (!spec.xmlSpec.hasParam(param.getKey())) {
+                throw new ProvisioningDescriptionException(Errors.unknownFeatureParameter(this, param.getKey()));
             }
-            final Map<String, String> params = fc.getParams();
-            if(params.size() > spec.xmlSpec.getParamsTotal()) {
-                throw new ProvisioningDescriptionException("Provided parameters " + params.keySet() + " do not match " + spec.id + " parameters " + spec.xmlSpec.getParamNames());
-            }
-            if(spec.xmlSpec.getParamsTotal() == 1) {
-                final Entry<String, String> param = params.entrySet().iterator().next();
-                if(!spec.xmlSpec.hasParam(param.getKey())) {
+            // TODO spec.getParameterType(param.getKey()).fromString(param.getValue());
+            this.params = Collections.singletonMap(param.getKey(), param.getValue());
+        } else {
+            this.params = new HashMap<>(spec.xmlSpec.getParamsTotal());
+            for (Map.Entry<String, String> param : params.entrySet()) {
+                if (!spec.xmlSpec.hasParam(param.getKey())) {
                     throw new ProvisioningDescriptionException(Errors.unknownFeatureParameter(this, param.getKey()));
                 }
-                this.params = Collections.singletonMap(param.getKey(), param.getValue());
-            } else {
-                this.params = new HashMap<>(spec.xmlSpec.getParamsTotal());
-                for(Map.Entry<String, String> param : params.entrySet()) {
-                    if(!spec.xmlSpec.hasParam(param.getKey())) {
-                        throw new ProvisioningDescriptionException(Errors.unknownFeatureParameter(this, param.getKey()));
-                    }
-                    this.params.put(param.getKey(), param.getValue());
-                }
+                this.params.put(param.getKey(), param.getValue());
             }
-        } else {
-            this.params = Collections.emptyMap();
         }
     }
 

@@ -36,6 +36,9 @@ import org.jboss.provisioning.spec.FeatureDependencySpec;
 import org.jboss.provisioning.spec.FeatureParameterSpec;
 import org.jboss.provisioning.spec.FeatureReferenceSpec;
 import org.jboss.provisioning.spec.FeatureSpec;
+import org.jboss.provisioning.type.FeatureParameterType;
+import org.jboss.provisioning.type.ParameterTypeNotFoundException;
+import org.jboss.provisioning.type.ParameterTypeProvider;
 
 
 /**
@@ -46,12 +49,43 @@ public class ResolvedFeatureSpec extends CapabilityProvider {
 
     final ResolvedSpecId id;
     final FeatureSpec xmlSpec;
+    private final ParameterTypeProvider typeProvider;
     private Map<String, ResolvedFeatureSpec> resolvedRefTargets;
     private Map<ResolvedFeatureId, FeatureDependencySpec> resolvedDeps;
 
-    public ResolvedFeatureSpec(ResolvedSpecId specId, FeatureSpec spec) {
+    public ResolvedFeatureSpec(ResolvedSpecId specId, ParameterTypeProvider typeProvider, FeatureSpec spec) {
         this.id = specId;
+        this.typeProvider = typeProvider;
         this.xmlSpec = spec;
+    }
+
+    public ResolvedSpecId getId() {
+        return id;
+    }
+
+    public String getName() {
+        return id.name;
+    }
+
+    public boolean hasAnnotations() {
+        return xmlSpec.hasAnnotations();
+    }
+
+    public List<FeatureAnnotation> getAnnotations() {
+        return xmlSpec.getAnnotations();
+    }
+
+    public boolean hasParams() {
+        return xmlSpec.hasParams();
+    }
+
+    public Set<String> getParamNames() {
+        return xmlSpec.getParamNames();
+    }
+
+    FeatureParameterType<?> getParameterType(String paramName) throws ParameterTypeNotFoundException, ProvisioningDescriptionException {
+        final FeatureParameterSpec paramSpec = xmlSpec.getParam(paramName);
+        return typeProvider.getType(id.gav.toGa(), paramSpec.getType());
     }
 
     Map<ResolvedFeatureId, FeatureDependencySpec> resolveFeatureDeps(ProvisioningRuntimeBuilder rt) throws ProvisioningException {
@@ -241,30 +275,6 @@ public class ResolvedFeatureSpec extends CapabilityProvider {
             buf.append(" cannot be null");
             throw new ProvisioningDescriptionException(buf.toString());
         }
-    }
-
-    public ResolvedSpecId getId() {
-        return id;
-    }
-
-    public String getName() {
-        return id.name;
-    }
-
-    public boolean hasAnnotations() {
-        return xmlSpec.hasAnnotations();
-    }
-
-    public List<FeatureAnnotation> getAnnotations() {
-        return xmlSpec.getAnnotations();
-    }
-
-    public boolean hasParams() {
-        return xmlSpec.hasParams();
-    }
-
-    public Set<String> getParamNames() {
-        return xmlSpec.getParamNames();
     }
 
     @Override

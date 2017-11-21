@@ -15,55 +15,44 @@
  * limitations under the License.
  */
 
-package org.jboss.provisioning.spec.type;
+package org.jboss.provisioning.util.formatparser;
 
 /**
- * @author aloubyansky
  *
+ * @author Alexey Loubyansky
  */
-public class WildcardParsingFormat implements ParsingFormat {
+public class WildcardParsingFormat extends ParsingFormatBase {
 
-    public static final WildcardParsingFormat INSTANCE = new WildcardParsingFormat();
+    private static final WildcardParsingFormat INSTANCE = new WildcardParsingFormat();
 
-    @Override
-    public String getName() {
-        return "*";
+    public static WildcardParsingFormat getInstance() {
+        return INSTANCE;
+    }
+
+    private WildcardParsingFormat() {
+        super("*", true);
     }
 
     @Override
-    public void react(ParsingContext ctx) throws ParsingException {
-        //deal(ctx);
-    }
-
-    @Override
-    public void pushed(ParsingContext ctx) throws ParsingException {
+    public void pushed(ParsingContext ctx) throws FormatParsingException {
         deal(ctx);
     }
 
     @Override
-    public void deal(ParsingContext ctx) throws ParsingException {
+    public void deal(ParsingContext ctx) throws FormatParsingException {
         final char ch = ctx.charNow();
         if(Character.isWhitespace(ch)) {
             return;
         }
         switch(ch) {
             case  '[':
-                ctx.pushFormat(ListParsingFormat.INSTANCE);
+                ctx.pushFormat(ListParsingFormat.getInstance());
                 break;
             case  '{':
-                ctx.pushFormat(ObjectParsingFormat.INSTANCE);
+                ctx.pushFormat(ObjectParsingFormat.getInstance());
                 break;
             default:
-                ctx.pushFormat(StringParsingFormat.INSTANCE);
+                ctx.pushFormat(StringParsingFormat.getInstance());
         }
-    }
-
-    @Override
-    public void eol(ParsingContext ctx) throws ParsingException {
-    }
-
-    @Override
-    public String toString() {
-        return "Wildcard";
     }
 }

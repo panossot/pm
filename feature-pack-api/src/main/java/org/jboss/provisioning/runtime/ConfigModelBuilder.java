@@ -234,7 +234,7 @@ public class ConfigModelBuilder implements ProvisionedConfig {
         return stack.remove(stack.size() - 1);
     }
 
-    ResolvedFeature includeFeature(ResolvedFeatureId id, ResolvedFeatureSpec spec, FeatureConfig config, Map<ResolvedFeatureId, FeatureDependencySpec> resolvedDeps) throws ProvisioningDescriptionException {
+    ResolvedFeature includeFeature(ResolvedFeatureId id, ResolvedFeatureSpec spec, FeatureConfig config, Map<ResolvedFeatureId, FeatureDependencySpec> resolvedDeps) throws ProvisioningException {
         if(id != null) {
             final ResolvedFeature feature = featuresById.get(id);
             if(feature != null) {

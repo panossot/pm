@@ -15,32 +15,24 @@
  * limitations under the License.
  */
 
-package org.jboss.provisioning.spec.type;
+package org.jboss.provisioning.util.formatparser;
 
 /**
- * @author aloubyansky
  *
+ * @author Alexey Loubyansky
  */
-public class StringFormatCallbackHandler extends ParsingCallbackHandler {
+public class FormatParsingException extends Exception {
 
-    private final StringBuilder buf = new StringBuilder();
+    /**
+     *
+     */
+    private static final long serialVersionUID = 1L;
 
-    public StringFormatCallbackHandler(ParsingFormat format, int strIndex) {
-        super(format, strIndex);
+    public FormatParsingException(String message, Throwable cause) {
+        super(message, cause);
     }
 
-    @Override
-    public void addChild(ParsingCallbackHandler childHandler) throws ParsingException {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void character(char ch) throws ParsingException {
-        buf.append(ch);
-    }
-
-    @Override
-    public Object getParsedValue() throws ParsingException {
-        return buf.toString().trim();
+    public FormatParsingException(String message) {
+        super(message);
     }
 }

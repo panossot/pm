@@ -15,41 +15,27 @@
  * limitations under the License.
  */
 
-package org.jboss.provisioning.spec.type;
+package org.jboss.provisioning.util.formatparser;
 
 /**
- * @author aloubyansky
  *
+ * @author Alexey Loubyansky
  */
-public class StringParsingFormat implements ParsingFormat {
+public class StringFormatCallbackHandler extends FormatContentHandler {
 
-    public static final StringParsingFormat INSTANCE = new StringParsingFormat();
+    private final StringBuilder buf = new StringBuilder();
 
-    @Override
-    public String getName() {
-        return "String";
+    public StringFormatCallbackHandler(ParsingFormat format, int strIndex) {
+        super(format, strIndex);
     }
 
     @Override
-    public void react(ParsingContext ctx) throws ParsingException {
+    public void character(char ch) throws FormatParsingException {
+        buf.append(ch);
     }
 
     @Override
-    public void pushed(ParsingContext ctx) throws ParsingException {
-        ctx.content();
-    }
-
-    @Override
-    public void deal(ParsingContext ctx) throws ParsingException {
-        ctx.content();
-    }
-
-    @Override
-    public String toString() {
-        return getName();
-    }
-
-    @Override
-    public void eol(ParsingContext ctx) throws ParsingException {
+    public Object getParsedValue() throws FormatParsingException {
+        return buf.toString().trim();
     }
 }

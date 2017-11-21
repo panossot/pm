@@ -15,24 +15,26 @@
  * limitations under the License.
  */
 
-package org.jboss.provisioning.spec.type;
+package org.jboss.provisioning.type;
+
+import org.jboss.provisioning.ProvisioningException;
 
 /**
- * @author aloubyansky
  *
+ * @author Alexey Loubyansky
  */
-public class ParsingException extends Exception {
+public class ParameterTypeConversionException extends ProvisioningException {
 
     /**
      *
      */
     private static final long serialVersionUID = 1L;
 
-    public ParsingException(String message, Throwable cause) {
-        super(message, cause);
+    public ParameterTypeConversionException(String message) {
+        super(message);
     }
 
-    public ParsingException(String message) {
-        super(message);
+    public ParameterTypeConversionException(String message, Throwable t) {
+        super(message, t);
     }
 }

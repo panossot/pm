@@ -15,25 +15,13 @@
  * limitations under the License.
  */
 
-package org.jboss.provisioning.spec.type;
+package org.jboss.provisioning.util.formatparser;
 
 /**
- * @author aloubyansky
  *
+ * @author Alexey Loubyansky
  */
-public interface ParsingContext {
+public interface FormatContentHandlerFactory {
 
-    void pushFormat(ParsingFormat format) throws ParsingException;
-
-    void popFormats() throws ParsingException;
-
-    void bounce();
-
-    void end() throws ParsingException;
-
-    char charNow();
-
-    boolean startsNow(String str);
-
-    void content() throws ParsingException;
+    FormatContentHandler forFormat(ParsingFormat format, int strIndex) throws FormatParsingException;
 }

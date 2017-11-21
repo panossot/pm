@@ -15,13 +15,13 @@
  * limitations under the License.
  */
 
-package org.jboss.provisioning.spec.type;
+package org.jboss.provisioning.util.formatparser;
 
 /**
- * @author aloubyansky
+ * @author Alexey Loubyansky
  *
  */
-public class WildcardCallbackHandler extends ParsingCallbackHandler {
+public class WildcardCallbackHandler extends FormatContentHandler {
 
     private Object result;
 
@@ -33,23 +33,18 @@ public class WildcardCallbackHandler extends ParsingCallbackHandler {
      * @see org.jboss.provisioning.spec.type.ParsingCallbackHandler#addChild(org.jboss.provisioning.spec.type.ParsingCallbackHandler)
      */
     @Override
-    public void addChild(ParsingCallbackHandler childHandler) throws ParsingException {
+    public void addChild(FormatContentHandler childHandler) throws FormatParsingException {
+        if(result != null) {
+            throw new FormatParsingException("The value of the wildcard has already been initialized");
+        }
         result = childHandler.getParsedValue();
-    }
-
-    /* (non-Javadoc)
-     * @see org.jboss.provisioning.spec.type.ParsingCallbackHandler#character(char)
-     */
-    @Override
-    public void character(char ch) throws ParsingException {
-        throw new UnsupportedOperationException();
     }
 
     /* (non-Javadoc)
      * @see org.jboss.provisioning.spec.type.ParsingCallbackHandler#getParsedValue()
      */
     @Override
-    public Object getParsedValue() throws ParsingException {
+    public Object getParsedValue() throws FormatParsingException {
         return result;
     }
 
