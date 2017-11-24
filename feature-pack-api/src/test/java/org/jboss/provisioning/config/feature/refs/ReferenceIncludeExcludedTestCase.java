@@ -55,7 +55,6 @@ public class ReferenceIncludeExcludedTestCase extends PmInstallFeaturePackTestBa
                     .build())
             .addSpec(FeatureSpec.builder("specB")
                     .addParam(FeatureParameterSpec.createId("name"))
-                    .addParam(FeatureParameterSpec.create("b", false))
                     .addParam(FeatureParameterSpec.create("a", true))
                     .addFeatureRef(FeatureReferenceSpec.builder("specA")
                             .setName("specA")
@@ -88,6 +87,7 @@ public class ReferenceIncludeExcludedTestCase extends PmInstallFeaturePackTestBa
 
     @Override
     protected void pmFailure(ProvisioningException e) {
+        e.printStackTrace();
         Assert.assertEquals("Failed to build config named config1", e.getMessage());
         e = (ProvisioningException) e.getCause();
         Assert.assertNotNull(e);

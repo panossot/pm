@@ -209,7 +209,7 @@ public interface Errors {
         return buf.toString();
     }
 
-    static String idParamForeignKeyInitConflict(ResolvedSpecId specId, String param, String prevValue, String newValue) {
+    static String idParamForeignKeyInitConflict(ResolvedSpecId specId, String param, Object prevValue, Object newValue) {
         return "Value '" + prevValue + "' of ID parameter " + param + " of " + specId
                 + " conflicts with the corresponding parent ID value '" + newValue + "'";
     }

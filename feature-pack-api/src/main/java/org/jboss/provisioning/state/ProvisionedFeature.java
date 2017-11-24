@@ -37,7 +37,7 @@ public interface ProvisionedFeature {
 
     boolean hasParams();
 
-    Map<String, String> getParams();
+    Map<String, Object> getParams();
 
-    String getParam(String name) throws ProvisioningDescriptionException;
+    Object getParam(String name) throws ProvisioningDescriptionException;
 }

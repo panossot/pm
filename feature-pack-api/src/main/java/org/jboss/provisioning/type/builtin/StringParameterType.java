@@ -25,7 +25,7 @@ import org.jboss.provisioning.type.ParameterTypeConversionException;
  *
  * @author Alexey Loubyansky
  */
-public class StringParameterType implements FeatureParameterType<String> {
+public class StringParameterType implements FeatureParameterType {
 
     private static final StringParameterType INSTANCE = new StringParameterType();
 
@@ -49,12 +49,12 @@ public class StringParameterType implements FeatureParameterType<String> {
     }
 
     @Override
-    public String toString(String o) throws ParameterTypeConversionException {
-        return o;
+    public String toString(Object o) throws ParameterTypeConversionException {
+        return (String) o;
     }
 
     @Override
-    public String merge(String original, String other) throws ProvisioningException {
+    public Object merge(Object original, Object other) throws ProvisioningException {
         return other;
     }
 }

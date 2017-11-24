@@ -25,5 +25,5 @@ import org.jboss.provisioning.ArtifactCoords;
  */
 public interface ParameterTypeProvider {
 
-    FeatureParameterType<?> getType(ArtifactCoords.Ga fpGa, String name) throws ParameterTypeNotFoundException;
+    FeatureParameterType getType(ArtifactCoords.Ga fpGa, String name) throws ParameterTypeNotFoundException;
 }

@@ -36,7 +36,7 @@ public class BuiltInParameterTypeProvider implements ParameterTypeProvider {
     }
 
     @Override
-    public FeatureParameterType<?> getType(Ga fpGa, String name) throws ParameterTypeNotFoundException {
+    public FeatureParameterType getType(Ga fpGa, String name) throws ParameterTypeNotFoundException {
         if(Constants.BUILT_IN_TYPE_STRING.equals(name)) {
             return StringParameterType.getInstance();
         } else {

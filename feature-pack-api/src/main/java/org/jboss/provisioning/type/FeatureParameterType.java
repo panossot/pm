@@ -23,15 +23,15 @@ import org.jboss.provisioning.ProvisioningException;
  * @author Alexey Loubyansky
  *
  */
-public interface FeatureParameterType<T> {
+public interface FeatureParameterType {
 
     String getName();
 
-    T getDefaultValue();
+    Object getDefaultValue();
 
-    T fromString(String str) throws ParameterTypeConversionException;
+    Object fromString(String str) throws ParameterTypeConversionException;
 
-    String toString(T o) throws ParameterTypeConversionException;
+    String toString(Object o) throws ParameterTypeConversionException;
 
-    T merge(T original, T other) throws ProvisioningException;
+    Object merge(Object original, Object other) throws ProvisioningException;
 }
