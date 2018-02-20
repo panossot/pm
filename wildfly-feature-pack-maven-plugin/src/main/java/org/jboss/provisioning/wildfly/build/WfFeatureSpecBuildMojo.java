@@ -40,6 +40,7 @@ import org.apache.maven.model.Resource;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
@@ -144,10 +145,10 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
                         UnArchiver unArchiver;
                         try {
                             unArchiver = archiverManager.getUnArchiver(fpArtifact.getType());
-                            getLog().debug("Found unArchiver by type: " + unArchiver);
+                            debug("Found unArchiver by type: %s", unArchiver);
                         } catch (NoSuchArchiverException e) {
                             unArchiver = archiverManager.getUnArchiver(archive);
-                            getLog().debug("Found unArchiver by extension: " + unArchiver);
+                            debug("Found unArchiver by extension: %s", unArchiver);
                         }
                         unArchiver.setFileSelectors(selectors);
                         unArchiver.setSourceFile(archive);
@@ -187,10 +188,10 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
                         UnArchiver unArchiver;
                         try {
                             unArchiver = archiverManager.getUnArchiver(fpArtifact.getType());
-                            getLog().debug("Found unArchiver by type: " + unArchiver);
+                            debug("Found unArchiver by type: %s", unArchiver);
                         } catch (NoSuchArchiverException e) {
                             unArchiver = archiverManager.getUnArchiver(archive);
-                            getLog().debug("Found unArchiver by extension: " + unArchiver);
+                            debug("Found unArchiver by extension: %s", unArchiver);
                         }
                         unArchiver.setFileSelectors(selectors);
                         unArchiver.setSourceFile(archive);
@@ -344,7 +345,7 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
 
     private void copyJbossModule(Path wildfly) throws IOException, MojoExecutionException {
         for (Dependency dep : project.getDependencyManagement().getDependencies()) {
-            getLog().debug("Dependency found " + dep);
+            debug("Dependency found %s", dep);
             if ("org.jboss.modules".equals(dep.getGroupId()) && "jboss-modules".equals(dep.getArtifactId())) {
                 ArtifactItem jbossModule = new ArtifactItem();
                 jbossModule.setArtifactId(dep.getArtifactId());
@@ -353,7 +354,7 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
                 jbossModule.setType(dep.getType());
                 jbossModule.setClassifier(dep.getClassifier());
                 File jbossModuleJar = findArtifact(jbossModule).getFile();
-                getLog().info("Copying " + jbossModuleJar.toPath() + " to " + wildfly.resolve("jboss-modules.jar"));
+                debug("Copying %s to %s", jbossModuleJar.toPath(), wildfly.resolve("jboss-modules.jar"));
                 Files.copy(jbossModuleJar.toPath(), wildfly.resolve("jboss-modules.jar"));
             }
         }
@@ -364,7 +365,7 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
                 if (isModule(dir)) {
-                    getLog().info("Copying " + dir + " to " + moduleDir);
+                    debug("Copying %s to %s", dir, moduleDir);
                     IoUtils.copy(dir, moduleDir);
                     return FileVisitResult.SKIP_SUBTREE;
                 }
@@ -450,10 +451,17 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
                     = new DefaultProjectBuildingRequest(session.getProjectBuildingRequest());
 
             buildingRequest.setRemoteRepositories(project.getRemoteArtifactRepositories());
-            getLog().info("Resolving " + coordinate + " with transitive dependencies");
+            debug("Resolving %s with transitive dependencies", coordinate);
             return dependencyResolver.resolveDependencies(buildingRequest, coordinate, null);
         } catch (DependencyResolverException e) {
             throw new MojoExecutionException("Couldn't download artifact: " + e.getMessage(), e);
+        }
+    }
+
+    private void debug(String format, Object... args) {
+        final Log log = getLog();
+        if(log.isDebugEnabled()) {
+            log.debug(String.format(format, args));
         }
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 Red Hat, Inc. and/or its affiliates
+ * Copyright 2016-2018 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -51,7 +51,9 @@ public class MavenPluginUtil extends AbstractLogEnabled {
                         final String artifactId = artifactDir.getFileName().toString();
                         try (DirectoryStream<Path> artifactStream = Files.newDirectoryStream(artifactDir)) {
                             for (Path versionDir : artifactStream) {
-                                logger.info("Preparing feature-pack " + versionDir.toAbsolutePath());
+                                if(logger.isDebugEnabled()) {
+                                    logger.debug("Preparing feature-pack " + versionDir.toAbsolutePath());
+                                }
                                 final Path zippedFP = layoutDir.resolve(
                                         groupId + '_' + artifactId + '_' + versionDir.getFileName().toString() + ".zip");
                                 if(Files.exists(zippedFP)) {
