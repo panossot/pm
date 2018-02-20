@@ -402,7 +402,7 @@ public class ProvisioningRuntimeBuilder {
 
             if (fpConfig.isInheritPackages()) {
                 for (String packageName : currentOrigin.spec.getDefaultPackageNames()) {
-                    if (!fpConfigStack.isPackageExcluded(currentOrigin.gav.toGa(), packageName)) {
+                    if (!fpConfigStack.isPackageFilteredOut(currentOrigin.gav.toGa(), packageName)) {
                         resolvePackage(packageName);
                         contributed = true;
                     }
@@ -1139,6 +1139,9 @@ public class ProvisioningRuntimeBuilder {
     private ResolvedFeatureSpec getFeatureSpec(FeaturePackRuntimeBuilder origin, String name, boolean switchOrigin) throws ProvisioningException {
         final ResolvedFeatureSpec resolvedSpec = getFeatureSpec(origin, name, Collections.emptySet(), switchOrigin);
         if(resolvedSpec == null) {
+            if(origin == null) {
+                throw new ProvisioningDescriptionException("Failed to locate feature spec '" + name + "' in the installed feature-packs.");
+            }
             throw new ProvisioningDescriptionException("Failed to locate feature spec '" + name + "' in " + origin.gav + " and its dependencies.");
         }
         return resolvedSpec;
