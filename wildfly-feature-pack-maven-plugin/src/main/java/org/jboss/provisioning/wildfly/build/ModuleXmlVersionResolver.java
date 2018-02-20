@@ -61,7 +61,7 @@ public class ModuleXmlVersionResolver {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
                 if (isModules(dir)) {
-                    log.info("Copying " + dir + " to " + targetModuleDir);
+                    debug(log, "Copying %s to %s", dir, targetModuleDir);
                     convertModules(dir, targetModuleDir, artifacts, log);
                     return FileVisitResult.SKIP_SUBTREE;
                 }
@@ -81,6 +81,12 @@ public class ModuleXmlVersionResolver {
             @Override
             public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
                 return FileVisitResult.CONTINUE;
+            }
+
+            private void debug(Log log, String format, Object... args) {
+                if(log.isDebugEnabled()) {
+                    log.debug(String.format(format, args));
+                }
             }
         });
     }
@@ -175,7 +181,7 @@ public class ModuleXmlVersionResolver {
 
     private static StartElement convertArtifactElement(XMLEventFactory eventFactory, StartElement artifactElement, Map<String, Artifact> artifacts, Log log) {
         List<Attribute> attributes = new ArrayList<>();
-        Iterator iter = artifactElement.getAttributes();
+        Iterator<?> iter = artifactElement.getAttributes();
         while (iter.hasNext()) {
             Attribute attribute = (Attribute) iter.next();
             if ("name".equals(attribute.getName().getLocalPart())) {
@@ -208,7 +214,7 @@ public class ModuleXmlVersionResolver {
 
     private static StartElement convertModuleElement(XMLEventFactory eventFactory, StartElement module, Map<String, Artifact> artifacts) {
         List<Attribute> attributes = new ArrayList<>();
-        Iterator iter = module.getAttributes();
+        Iterator<?> iter = module.getAttributes();
         while (iter.hasNext()) {
             Attribute attribute = (Attribute) iter.next();
             if ("version".equals(attribute.getName().getLocalPart())) {

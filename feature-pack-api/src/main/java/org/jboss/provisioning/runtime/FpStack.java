@@ -77,6 +77,10 @@ class FpStack {
             return fpConfigs.get(currentFp).isInheritModelOnlyConfigs();
         }
 
+        boolean isInheritPackages() {
+            return fpConfigs.get(currentFp).isInheritPackages();
+        }
+
         Boolean isInheritPackages(ArtifactCoords.Ga ga) {
             final FeaturePackConfig fpConfig = getFpConfig(ga);
             return fpConfig == null ? null : fpConfig.isInheritPackages();
@@ -90,6 +94,17 @@ class FpStack {
         boolean isPackageIncluded(ArtifactCoords.Ga ga, String packageName) {
             final FeaturePackConfig fpConfig = getFpConfig(ga);
             return fpConfig == null ? false : fpConfig.isPackageIncluded(packageName);
+        }
+
+        Boolean isPackageFilteredOut(ArtifactCoords.Ga ga, String packageName) {
+            final FeaturePackConfig fpConfig = getFpConfig(ga);
+            if(fpConfig == null) {
+                return null;
+            }
+            if(fpConfig.isInheritPackages()) {
+                return fpConfig.isPackageExcluded(packageName);
+            }
+            return fpConfig.isPackageIncluded(packageName);
         }
 
         private FeaturePackConfig getFpConfig(ArtifactCoords.Ga ga) {
@@ -282,6 +297,32 @@ class FpStack {
             if(levels.get(i).isPackageIncluded(ga, packageName)) {
                 return true;
             }
+        }
+        return false;
+    }
+
+    boolean isPackageFilteredOut(ArtifactCoords.Ga ga, String packageName) {
+        if(levels.isEmpty()) {
+            return false;
+        }
+        int i = levels.size() - 1;
+        Level level = levels.get(i--);
+        Boolean filteredOut = level.isPackageFilteredOut(ga, packageName);
+        if(filteredOut != null && filteredOut) {
+            return true;
+        }
+        while (i >= 0) {
+            level = levels.get(i--);
+            if(filteredOut == null && !level.isInheritPackages()) {
+                return true;
+            }
+            filteredOut = level.isPackageFilteredOut(ga, packageName);
+            if(filteredOut != null && filteredOut) {
+                return true;
+            }
+        }
+        if(filteredOut == null && !level.isInheritPackages()) {
+            return true;
         }
         return false;
     }
