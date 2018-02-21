@@ -104,7 +104,7 @@ class FpStack {
             if(fpConfig.isInheritPackages()) {
                 return fpConfig.isPackageExcluded(packageName);
             }
-            return fpConfig.isPackageIncluded(packageName);
+            return !fpConfig.isPackageIncluded(packageName);
         }
 
         private FeaturePackConfig getFpConfig(ArtifactCoords.Ga ga) {
@@ -174,7 +174,7 @@ class FpStack {
     }
 
     boolean isFilteredOut(ConfigId configId, boolean fromPrevLevel) {
-        int i = fromPrevLevel ? levels.size() - 2 : levels.size() - 1;
+        int i = levels.size() - (fromPrevLevel ? 2 : 1);
         while(i >= 0) {
             if(levels.get(i--).isFilteredOut(configId)) {
                 return true;
@@ -301,11 +301,11 @@ class FpStack {
         return false;
     }
 
-    boolean isPackageFilteredOut(ArtifactCoords.Ga ga, String packageName) {
-        if(levels.isEmpty()) {
+    boolean isPackageFilteredOut(ArtifactCoords.Ga ga, String packageName, boolean fromPrevLevel) {
+        int i = levels.size() - (fromPrevLevel ? 2 : 1);
+        if(i < 0) {
             return false;
         }
-        int i = levels.size() - 1;
         Level level = levels.get(i--);
         Boolean filteredOut = level.isPackageFilteredOut(ga, packageName);
         if(filteredOut != null && filteredOut) {
