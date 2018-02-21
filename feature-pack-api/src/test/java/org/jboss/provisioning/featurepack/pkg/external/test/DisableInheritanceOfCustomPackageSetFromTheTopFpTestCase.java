@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.jboss.provisioning.featurepack.dependency.simple.test;
+package org.jboss.provisioning.featurepack.pkg.external.test;
 
 import org.jboss.provisioning.ArtifactCoords;
 import org.jboss.provisioning.ArtifactCoords.Gav;
@@ -33,53 +33,54 @@ import org.jboss.provisioning.test.util.fs.state.DirState;
  *
  * @author Alexey Loubyansky
  */
-public class PickedPackagesTestCase extends PmProvisionConfigTestBase {
+public class DisableInheritanceOfCustomPackageSetFromTheTopFpTestCase extends PmProvisionConfigTestBase {
 
-    private static final Gav FP1_GAV = ArtifactCoords.newGav("org.jboss.pm.test", "fp1", "1.0.0.Alpha-SNAPSHOT");
-    private static final Gav FP2_GAV = ArtifactCoords.newGav("org.jboss.pm.test", "fp2", "2.0.0.Final");
+    private static final Gav FP1_GAV = ArtifactCoords.newGav("org.pm.test", "fp1", "1.0.0.Final");
+    private static final Gav FP2_GAV = ArtifactCoords.newGav("org.pm.test", "fp2", "1.0.0.Final");
+    private static final Gav FP3_GAV = ArtifactCoords.newGav("org.pm.test", "fp3", "1.0.0.Final");
 
     @Override
     protected void setupRepo(FeaturePackRepositoryManager repoManager) throws ProvisioningDescriptionException {
         repoManager.installer()
-            .newFeaturePack(FP1_GAV)
-                .addDependency(FeaturePackConfig.builder(FP2_GAV)
-                        .setInheritPackages(false)
-                        .includePackage("b")
-                        .build())
-                .newPackage("main", true)
-                    .addDependency("d")
-                    .writeContent("f/p1/c.txt", "c")
-                    .getFeaturePack()
-                .newPackage("d")
-                    .writeContent("f/p1/d.txt", "d")
-                    .getFeaturePack()
-                .getInstaller()
-            .newFeaturePack(FP2_GAV)
-                .newPackage("main", true)
-                    .addDependency("b")
-                    .writeContent("f/p2/a.txt", "a")
-                    .getFeaturePack()
-                .newPackage("b")
-                    .writeContent("f/p2/b.txt", "b")
-                    .getFeaturePack()
-                .newPackage("c")
-                    .writeContent("f/p2/c.txt", "c")
-                    .getFeaturePack()
-                .getInstaller()
-            .install();
+        .newFeaturePack(FP1_GAV)
+            .addDependency(FeaturePackConfig.builder(FP2_GAV)
+                    .build())
+            .newPackage("p1", true)
+                .writeContent("fp1/p1.txt", "p1")
+                .getFeaturePack()
+            .newPackage("p2")
+                .writeContent("fp1/p2.txt", "p2")
+                .getFeaturePack()
+            .getInstaller()
+        .newFeaturePack(FP2_GAV)
+            .addDependency(FeaturePackConfig.builder(FP3_GAV)
+                    .setInheritPackages(false)
+                    .includePackage("p2")
+                    .build())
+            .newPackage("p1", true)
+                .writeContent("fp2/p1.txt", "p1")
+                .getFeaturePack()
+            .newPackage("p2")
+                .writeContent("fp2/p2.txt", "p2")
+                .getFeaturePack()
+            .getInstaller()
+        .newFeaturePack(FP3_GAV)
+             .newPackage("p1", true)
+                 .writeContent("fp3/p1.txt", "p1")
+                 .getFeaturePack()
+             .newPackage("p2")
+                 .writeContent("fp3/p2.txt", "p2")
+                 .getFeaturePack()
+            .getInstaller()
+        .install();
     }
 
     @Override
-    protected ProvisioningConfig provisioningConfig()
-            throws ProvisioningDescriptionException {
+    protected ProvisioningConfig provisioningConfig() throws ProvisioningException {
         return ProvisioningConfig.builder()
                 .addFeaturePackDep(FeaturePackConfig.builder(FP1_GAV)
                         .setInheritPackages(false)
-                        .includePackage("d")
-                        .build())
-                .addFeaturePackDep(FeaturePackConfig.builder(FP2_GAV)
-                        .setInheritPackages(false)
-                        .includePackage("c")
+                        .includePackage("p2")
                         .build())
                 .build();
     }
@@ -88,10 +89,7 @@ public class PickedPackagesTestCase extends PmProvisionConfigTestBase {
     protected ProvisionedState provisionedState() throws ProvisioningException {
         return ProvisionedState.builder()
                 .addFeaturePack(ProvisionedFeaturePack.builder(FP1_GAV)
-                        .addPackage("d")
-                        .build())
-                .addFeaturePack(ProvisionedFeaturePack.builder(FP2_GAV)
-                        .addPackage("c")
+                        .addPackage("p2")
                         .build())
                 .build();
     }
@@ -99,9 +97,7 @@ public class PickedPackagesTestCase extends PmProvisionConfigTestBase {
     @Override
     protected DirState provisionedHomeDir() {
         return newDirBuilder()
-                .addFile("f/p1/d.txt", "d")
-                .addFile("f/p2/c.txt", "c")
+                .addFile("fp1/p2.txt", "p2")
                 .build();
     }
-
 }

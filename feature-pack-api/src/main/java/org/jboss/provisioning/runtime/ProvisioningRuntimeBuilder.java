@@ -402,21 +402,20 @@ public class ProvisioningRuntimeBuilder {
 
             if (fpConfig.isInheritPackages()) {
                 for (String packageName : currentOrigin.spec.getDefaultPackageNames()) {
-                    if (!fpConfigStack.isPackageFilteredOut(currentOrigin.gav.toGa(), packageName)) {
-                        resolvePackage(packageName);
-                        contributed = true;
+                    if (fpConfigStack.isPackageFilteredOut(currentOrigin.gav.toGa(), packageName, false)) {
+                        continue;
                     }
+                    resolvePackage(packageName);
+                    contributed = true;
                 }
             }
             if (fpConfig.hasIncludedPackages()) {
                 for (PackageConfig pkgConfig : fpConfig.getIncludedPackages()) {
-                    if (!fpConfigStack.isPackageExcluded(currentOrigin.gav.toGa(), pkgConfig.getName())) {
-                        resolvePackage(pkgConfig.getName());
-                        contributed = true;
-                    } else {
-                        throw new ProvisioningDescriptionException(
-                                Errors.unsatisfiedPackageDependency(currentOrigin.gav, pkgConfig.getName()));
+                    if (fpConfigStack.isPackageFilteredOut(currentOrigin.gav.toGa(), pkgConfig.getName(), true)) {
+                        continue;
                     }
+                    resolvePackage(pkgConfig.getName());
+                    contributed = true;
                 }
             }
 
