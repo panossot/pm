@@ -188,7 +188,10 @@ public interface Errors {
     }
 
     static String unsatisfiedPackageDependencies(ArtifactCoords.Gav fpGav, String packageName, Collection<String> unsatisfiedDeps) {
-        return "Feature-pack " + fpGav + " package " + packageName + " has unsatisfied dependencies on packages " + unsatisfiedDeps;
+        final StringBuilder buf = new StringBuilder();
+        buf.append("Feature-pack ").append(fpGav).append(" package ").append(packageName).append(" has unsatisfied dependencies on packages: ");
+        StringUtils.append(buf, unsatisfiedDeps);
+        return buf.toString();
     }
 
     static String unsatisfiedPackageDependency(ArtifactCoords.Gav fpGav, String targetPackage) {
