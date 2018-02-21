@@ -137,6 +137,7 @@ public class ModuleXmlVersionResolver {
     public static void convertModule(final Path file, Path target, Map<String, Artifact> artifacts, Log log) throws IOException, XMLStreamException {
         XMLOutputFactory outputFactory = XMLOutputFactory.newInstance();
         XMLInputFactory inputFactory = XMLInputFactory.newInstance();
+        Files.deleteIfExists(target);
         try (Reader is = Files.newBufferedReader(file, Charsets.UTF_8);
                 Writer out = Files.newBufferedWriter(target, Charsets.UTF_8, StandardOpenOption.CREATE_NEW)) {
             convert(inputFactory.createXMLEventReader(is), outputFactory.createXMLEventWriter(out), artifacts, log);
