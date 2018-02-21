@@ -30,9 +30,12 @@ import java.nio.file.Paths;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
+
 import javax.inject.Inject;
 import javax.xml.stream.XMLStreamException;
 
@@ -70,7 +73,9 @@ import org.jboss.provisioning.plugin.wildfly.WfConstants;
 import org.jboss.provisioning.spec.FeaturePackSpec;
 import org.jboss.provisioning.spec.PackageSpec;
 import org.jboss.provisioning.util.IoUtils;
+import org.jboss.provisioning.util.PmCollections;
 import org.jboss.provisioning.util.PropertyUtils;
+import org.jboss.provisioning.util.StringUtils;
 import org.jboss.provisioning.wildfly.build.ModuleParseResult.ModuleDependency;
 import org.jboss.provisioning.xml.FeaturePackXmlWriter;
 import org.jboss.provisioning.xml.PackageXmlParser;
@@ -423,7 +428,7 @@ public class WfFeaturePackBuildMojo extends AbstractMojo {
             return;
         }
 
-        fpDependencies = new HashMap<>(wfFpConfig.getDependencies().size());
+        fpDependencies = new LinkedHashMap<>(wfFpConfig.getDependencies().size());
         for (FeaturePackDependencySpec depSpec : wfFpConfig.getDependencies()) {
             final FeaturePackConfig depConfig = depSpec.getTarget();
             final String depStr = depConfig.getGav().toString();
@@ -601,27 +606,35 @@ public class WfFeaturePackBuildMojo extends AbstractMojo {
                         final String depName = buf.toString();
                         if (moduleXmlByPkgName.containsKey(depName)) {
                             pkgSpecBuilder.addPackageDep(depName, moduleDep.isOptional());
-                        } else {
-                            Map.Entry<String, FeaturePackLayout> depSrc = null;
-                            if (!fpDependencies.isEmpty()) {
-                                for (Map.Entry<String, FeaturePackLayout> depEntry : fpDependencies.entrySet()) {
-                                    if (depEntry.getValue().hasPackage(depName)) {
-                                        if (depSrc != null) {
-                                            throw new MojoExecutionException("Package " + depName
-                                                    + " found in more than one feature-pack dependency: " + depSrc.getKey()
-                                                    + " and " + depEntry.getKey());
-                                        }
-                                        depSrc = depEntry;
+                            continue;
+                        }
+                        Map.Entry<String, FeaturePackLayout> depSrc = null;
+                        if (!fpDependencies.isEmpty()) {
+                            Set<String> alternativeSrc = Collections.emptySet();
+                            for (Map.Entry<String, FeaturePackLayout> depEntry : fpDependencies.entrySet()) {
+                                if (depEntry.getValue().hasPackage(depName)) {
+                                    if (depSrc != null) {
+                                        alternativeSrc = PmCollections.add(alternativeSrc, depSrc.getKey());
                                     }
+                                    depSrc = depEntry;
                                 }
                             }
-                            if(depSrc != null) {
-                                pkgSpecBuilder.addPackageDep(depSrc.getKey(), depName, moduleDep.isOptional());
-                            } else if(moduleDep.isOptional()){
-                                //getLog().warn("UNSATISFIED EXTERNAL OPTIONAL DEPENDENCY " + packageName + " -> " + depName);
-                            } else {
-                                throw new MojoExecutionException("Package " + packageName + " has unsatisifed external dependency on package " + depName);
+                            if (!alternativeSrc.isEmpty()) {
+                                final StringBuilder warn = new StringBuilder();
+                                warn.append("Package ").append(depName).append(" from ").append(depSrc.getKey())
+                                        .append(" picked as dependency of ").append(packageName).append(" although ")
+                                        .append(depName).append(" also exists in ");
+                                StringUtils.append(warn, alternativeSrc);
+                                getLog().warn(warn);
                             }
+                        }
+                        if (depSrc != null) {
+                            pkgSpecBuilder.addPackageDep(depSrc.getKey(), depName, moduleDep.isOptional());
+                        } else if (moduleDep.isOptional()) {
+                            // getLog().warn("UNSATISFIED EXTERNAL OPTIONAL DEPENDENCY " + packageName + " -> " + depName);
+                        } else {
+                            throw new MojoExecutionException(
+                                    "Package " + packageName + " has unsatisifed external dependency on package " + depName);
                         }
                     }
                 }
