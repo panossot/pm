@@ -24,6 +24,7 @@ import java.io.StringWriter;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Collectors;
+
 import org.jboss.provisioning.MessageWriter;
 import org.jboss.provisioning.ProvisioningException;
 import org.wildfly.core.launcher.CliCommandBuilder;
@@ -45,13 +46,7 @@ public class CliScriptRunner {
         final ProcessBuilder processBuilder = new ProcessBuilder(arguments).redirectErrorStream(true);
         processBuilder.environment().put("JBOSS_HOME", installHome.toString());
 
-        execute(processBuilder, messageWriter);//                try {
-//                    final Path scriptCopy = Paths.get("/home/olubyans/pm-test").resolve(script.getFileName());
-//                    IoUtils.copy(script, scriptCopy);
-//                    buf.append(" (the failed script was copied to ").append(scriptCopy).append(')');
-//                } catch(IOException e) {
-//                    e.printStackTrace();
-//                }
+        execute(processBuilder, messageWriter);
     }
 
     private static void execute(final ProcessBuilder processBuilder, MessageWriter messageWriter) throws ProvisioningException {
@@ -59,6 +54,7 @@ public class CliScriptRunner {
         try {
             cliProcess = processBuilder.start();
 
+            String config = null;
             final StringWriter errorWriter = new StringWriter();
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(cliProcess.getInputStream()));
                     BufferedWriter writer = new BufferedWriter(errorWriter)) {
@@ -67,10 +63,15 @@ public class CliScriptRunner {
                 while (line != null) {
                     if (line.equals("}")) {
                         flush = true;
-                    } else if (flush) {
-                        writer.flush();
-                        errorWriter.getBuffer().setLength(0);
-                        flush = false;
+                    } else {
+                        if(line.startsWith("&config ")) {
+                            config = line;
+                        }
+                        if (flush) {
+                            writer.flush();
+                            errorWriter.getBuffer().setLength(0);
+                            flush = false;
+                        }
                     }
                     writer.write(line);
                     writer.newLine();
@@ -89,14 +90,8 @@ public class CliScriptRunner {
             }
 
             if (cliProcess.exitValue() != 0) {
-//                try {
-//                    final Path scriptCopy = Paths.get("/home/olubyans/pm-test").resolve(script.getFileName());
-//                    IoUtils.copy(script, scriptCopy);
-//                    buf.append(" (the failed script was copied to ").append(scriptCopy).append(')');
-//                } catch(IOException e) {
-//                    e.printStackTrace();
-//                }
-                throw new ProvisioningException(errorWriter.getBuffer().toString());
+                throw new ProvisioningException("Failed to generate " + config.substring(1),
+                        new ProvisioningException(errorWriter.getBuffer().toString()));
             }
         } catch (IOException e) {
             throw new ProvisioningException("CLI process failed", e);
