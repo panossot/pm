@@ -17,6 +17,7 @@
 package org.jboss.provisioning.plugin.wildfly;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -50,6 +51,7 @@ import nu.xom.Element;
 import nu.xom.Elements;
 import nu.xom.ParsingException;
 import nu.xom.Serializer;
+
 import org.jboss.provisioning.ArtifactCoords;
 import org.jboss.provisioning.Errors;
 import org.jboss.provisioning.MessageWriter;
@@ -173,10 +175,21 @@ public class WfProvisioningPlugin implements ProvisioningPlugin {
     }
 
     private void generateConfigs(ProvisioningRuntime runtime, final MessageWriter messageWriter) throws ProvisioningException {
-        if(runtime.hasConfigs()) {
-            final WfProvisionedConfigHandler configHandler = new WfProvisionedConfigHandler(runtime);
+        if(!runtime.hasConfigs()) {
+            return;
+        }
+        final Path script = runtime.getTmpPath("wildfly/configs.cli");
+        try {
+            Files.createDirectories(script.getParent());
+        } catch (IOException e1) {
+            throw new ProvisioningException(Errors.mkdirs(script.getParent()));
+        }
+
+        final WfProvisionedConfigHandler configHandler;
+        try(BufferedWriter writer = Files.newBufferedWriter(script)) {
+            configHandler = new WfProvisionedConfigHandler(runtime, writer);
             for (ProvisionedConfig config : runtime.getConfigs()) {
-                if(messageWriter.isVerboseEnabled()) {
+                if (messageWriter.isVerboseEnabled()) {
                     final StringBuilder msg = new StringBuilder(64).append("Feature config");
                     if (config.getModel() != null) {
                         msg.append(" model=").append(config.getModel());
@@ -194,7 +207,12 @@ public class WfProvisioningPlugin implements ProvisioningPlugin {
                 }
                 config.handle(configHandler);
             }
+        } catch (IOException e) {
+            throw new ProvisioningException(Errors.writeFile(script), e);
         }
+
+        CliScriptRunner.runCliScript(runtime.getStagedDir(), script, messageWriter);
+        configHandler.cleanup();
     }
 
     private void processPackages(final FeaturePackRuntime fp) throws ProvisioningException {
