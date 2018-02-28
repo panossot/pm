@@ -429,14 +429,12 @@ public class ProvisioningRuntime implements FeaturePackSet<FeaturePackRuntime>, 
     @Override
     public void close() {
         IoUtils.recursiveDelete(workDir);
-        if (messageWriter.isVerboseEnabled()) {
+//        if (messageWriter.isVerboseEnabled()) {
             final long time = System.currentTimeMillis() - startTime;
             final long seconds = time / 1000;
-            messageWriter.verbose("Done in %d.%d seconds", seconds, (time - seconds * 1000));
-        }
-        final long time = System.currentTimeMillis() - startTime;
-        final long seconds = time / 1000;
-        messageWriter.print("Done in %d.%d seconds", seconds, (time - seconds * 1000));
+            messageWriter.print("Done in %d.%d seconds", seconds, (time - seconds * 1000));
+//            messageWriter.verbose("Done in %d.%d seconds", seconds, (time - seconds * 1000));
+//        }
     }
 
     private void executeDiffPlugins(Path target, Path customizedInstallation) throws ProvisioningException, IOException {
