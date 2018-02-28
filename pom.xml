@@ -48,6 +48,7 @@
     <module>tool</module>
     <module>universe</module>
     <module>wildfly-provisioning-plugin</module>
+    <module>wildfly-config-gen</module>
     <module>wildfly-feature-pack-maven-plugin</module>
   </modules>
 
@@ -156,6 +157,12 @@
       <dependency>
         <groupId>${project.groupId}</groupId>
         <artifactId>wildfly-provisioning-plugin</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>${project.groupId}</groupId>
+        <artifactId>wildfly-config-gen</artifactId>
         <version>${project.version}</version>
       </dependency>
 

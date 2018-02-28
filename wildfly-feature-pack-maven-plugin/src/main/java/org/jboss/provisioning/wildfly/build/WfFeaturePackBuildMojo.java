@@ -92,6 +92,7 @@ import org.jboss.provisioning.xml.PackageXmlWriter;
 public class WfFeaturePackBuildMojo extends AbstractMojo {
 
     private static final ArtifactCoords WF_PLUGIN_COORDS = ArtifactCoords.newInstance("org.jboss.pm", "wildfly-provisioning-plugin", "1.0.0.Alpha-SNAPSHOT", "jar");
+    private static final ArtifactCoords WF_CONFIG_GEN_COORDS = ArtifactCoords.newInstance("org.jboss.pm", "wildfly-config-gen", "1.0.0.Alpha-SNAPSHOT", "jar");
 
     private static final boolean OS_WINDOWS = PropertyUtils.isWindows();
 
@@ -291,6 +292,7 @@ public class WfFeaturePackBuildMojo extends AbstractMojo {
         // collect feature-pack resources
         final Path resourcesWildFly = fpDir.resolve(Constants.RESOURCES).resolve(WfConstants.WILDFLY);
         mkdirs(resourcesWildFly);
+        addConfigGenerator(resourcesWildFly);
 
         // properties
         try(OutputStream out = Files.newOutputStream(resourcesWildFly.resolve(WfConstants.WILDFLY_TASKS_PROPS))) {
@@ -344,12 +346,28 @@ public class WfFeaturePackBuildMojo extends AbstractMojo {
         try {
             wfPlugInPath = resolveArtifact(WF_PLUGIN_COORDS);
         } catch (ProvisioningException e) {
-            throw new MojoExecutionException("Failed to resolve plug-in artifact " + WF_PLUGIN_COORDS);
+            throw new MojoExecutionException("Failed to resolve plug-in artifact " + WF_PLUGIN_COORDS, e);
         }
         try {
             IoUtils.copy(wfPlugInPath, pluginsDir.resolve(wfPlugInPath.getFileName()));
         } catch (IOException e) {
             throw new MojoExecutionException(Errors.copyFile(wfPlugInPath, pluginsDir.resolve(wfPlugInPath.getFileName())));
+        }
+    }
+
+    private void addConfigGenerator(final Path resourcesDir)
+            throws MojoExecutionException {
+        mkdirs(resourcesDir);
+        Path wfPlugInPath;
+        try {
+            wfPlugInPath = resolveArtifact(WF_CONFIG_GEN_COORDS);
+        } catch (ProvisioningException e) {
+            throw new MojoExecutionException("Failed to resolve WildFly config generator " + WF_PLUGIN_COORDS, e);
+        }
+        try {
+            IoUtils.copy(wfPlugInPath, resourcesDir.resolve("wildfly-config-gen.jar"));
+        } catch (IOException e) {
+            throw new MojoExecutionException(Errors.copyFile(wfPlugInPath, resourcesDir.resolve(wfPlugInPath.getFileName())));
         }
     }
 

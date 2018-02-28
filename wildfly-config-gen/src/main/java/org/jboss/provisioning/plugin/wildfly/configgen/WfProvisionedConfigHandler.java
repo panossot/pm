@@ -15,11 +15,10 @@
  * limitations under the License.
  */
 
-package org.jboss.provisioning.plugin.wildfly.sandbox;
+package org.jboss.provisioning.plugin.wildfly.configgen;
 
 import static org.jboss.provisioning.Constants.PM_UNDEFINED;
 
-import java.io.BufferedWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -29,6 +28,12 @@ import java.util.List;
 import java.util.Set;
 import java.util.StringTokenizer;
 
+import org.jboss.as.cli.CommandFormatException;
+import org.jboss.as.cli.parsing.StateParser;
+import org.jboss.as.cli.parsing.arguments.ArgumentValueCallbackHandler;
+import org.jboss.as.cli.parsing.arguments.ArgumentValueInitialState;
+import org.jboss.as.controller.client.helpers.Operations;
+import org.jboss.dmr.ModelNode;
 import org.jboss.provisioning.ArtifactCoords;
 import org.jboss.provisioning.Constants;
 import org.jboss.provisioning.Errors;
@@ -49,7 +54,7 @@ import org.jboss.provisioning.util.PmCollections;
  *
  * @author Alexey Loubyansky
  */
-public class WfConfig2EmbeddedScriptHandler implements ProvisionedConfigHandler {
+public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
 
     private static final String DOMAIN = "domain";
     private static final String HOST = "host";
@@ -255,28 +260,26 @@ public class WfConfig2EmbeddedScriptHandler implements ProvisionedConfigHandler 
         }
 
         private void writeOp(ProvisionedFeature feature) throws ProvisioningException {
-            writeOpAddress(feature);
-            if (opParams.isEmpty()) {
-                writer.endOp();
-                return;
-            }
-            int i = 0;
-            while (i < opParams.size()) {
-                String value = feature.getConfigParam(opParams.get(i++));
-                if (value == null) {
-                    continue;
+            final ModelNode op = writeOpAddress(feature);
+            if (!opParams.isEmpty()) {
+                int i = 0;
+                while (i < opParams.size()) {
+                    String value = feature.getConfigParam(opParams.get(i++));
+                    if (value == null) {
+                        continue;
+                    }
+                    if (PM_UNDEFINED.equals(value) || LIST_UNDEFINED.equals(value)) {
+                        // value = UNDEFINED;
+                        continue;
+                    }
+                    setOpParam(op, opParams.get(i++), value.trim().isEmpty() ? '\"' + value + '\"' : value);
                 }
-                if (PM_UNDEFINED.equals(value) || LIST_UNDEFINED.equals(value)) {
-                    // value = UNDEFINED;
-                    continue;
-                }
-                writer.addOpParam(opParams.get(i++), value.trim().isEmpty() ? '\"' + value + '\"' : value);
             }
-            writer.endOp();
+            handleOp(op);
         }
 
         private void writeList(ProvisionedFeature feature) throws ProvisioningException {
-            writeOpAddress(feature);
+            final ModelNode op = writeOpAddress(feature);
             String value = feature.getConfigParam(opParams.get(0));
             if (value == null) {
                 throw new ProvisioningDescriptionException(opParams.get(0) + " parameter is null: " + feature);
@@ -284,29 +287,26 @@ public class WfConfig2EmbeddedScriptHandler implements ProvisionedConfigHandler 
             if (PM_UNDEFINED.equals(value)) {
                 value = UNDEFINED;
             }
-            writer.addOpParam("name", opParams.get(1));
-            writer.addOpParam("value", value);
-            writer.endOp();
+            op.get("name").set(opParams.get(1));
+            setOpParam(op, "value", value);
+            handleOp(op);
         }
 
-        private void writeOpAddress(ProvisionedFeature feature) throws ProvisioningException {
-            writer.startOp(name);
+        private ModelNode writeOpAddress(ProvisionedFeature feature) throws ProvisioningException {
+            final ModelNode op = Operations.createOperation(name);
             if(addrParams.isEmpty()) {
-                return;
+                return op;
             }
-            boolean endAddr = false;
+            final ModelNode addr = Operations.getOperationAddress(op);
             int i = 0;
             while (i < addrParams.size()) {
                 String value = feature.getConfigParam(addrParams.get(i++));
                 if (value == null || PM_UNDEFINED.equals(value) || LIST_UNDEFINED.equals(value)) {
                     continue; // TODO perhaps throw an error in case it's undefined
                 }
-                writer.addOpAddress(addrParams.get(i++), value);
-                endAddr = true;
+                addr.add(addrParams.get(i++), value);
             }
-            if(endAddr) {
-                writer.endOpAddress();
-            }
+            return op;
         }
 
         void toCommandLine(ProvisionedFeature feature) throws ProvisioningException {
@@ -346,27 +346,29 @@ public class WfConfig2EmbeddedScriptHandler implements ProvisionedConfigHandler 
                 if (PM_UNDEFINED.equals(value.toString())|| LIST_UNDEFINED.equals(value.toString())) {
                     value = UNDEFINED;
                 }
-                writeOpAddress(feature);
-                writer.addOpParam("name", opParams.get(i++));
-                writer.addOpParam("value", value.toString());
-                writer.endOp();
+                final ModelNode op = writeOpAddress(feature);
+                op.get("name").set(opParams.get(i++));
+                setOpParam(op, "value", value.toString());
+                handleOp(op);
             }
         }
     }
 
     private final ProvisioningRuntime runtime;
     private final MessageWriter messageWriter;
-    private EmbeddedScriptWriter writer;
+    private final WfConfigGenerator configGen;
 
     private List<ManagedOp> ops = new ArrayList<>();
     private NameFilter paramFilter;
 
-    List<String> tmpConfigs = Collections.emptyList();
+    private List<String> tmpConfigs = Collections.emptyList();
 
-    public WfConfig2EmbeddedScriptHandler(ProvisioningRuntime runtime, BufferedWriter writer) throws ProvisioningException {
+    private ModelNode composite;
+
+    public WfProvisionedConfigHandler(ProvisioningRuntime runtime, WfConfigGenerator configGen) throws ProvisioningException {
         this.runtime = runtime;
         this.messageWriter = runtime.getMessageWriter();
-        this.writer = new EmbeddedScriptWriter(writer);
+        this.configGen = configGen;
     }
 
     @Override
@@ -379,7 +381,7 @@ public class WfConfig2EmbeddedScriptHandler implements ProvisionedConfigHandler 
                 throw new ProvisioningException("Config " + config.getName() + " of model " + config.getModel() + " is missing property config-name");
             }
 
-            writer.embedServer("--server-config=" + logFile, "--admin-only", "--internal-empty-config", "--internal-remove-config");
+            configGen.startServer("--server-config=" + logFile, "--admin-only", "--internal-empty-config", "--internal-remove-config");
 
             paramFilter = new NameFilter() {
                 @Override
@@ -401,10 +403,8 @@ public class WfConfig2EmbeddedScriptHandler implements ProvisionedConfigHandler 
                 hostConfig = tmpConfig;
             }
 
-            writer.embedHc("--domain-config=" + logFile, "--host-config=" + hostConfig, "--empty-domain-config", "--remove-existing-domain-config", "--empty-host-config", "--remove-existing-host-config");
-            writer.startOp("add");
-            writer.setOpAddress("host", "tmp");
-            writer.endOp();
+            configGen.startHc("--domain-config=" + logFile, "--host-config=" + hostConfig, "--empty-domain-config", "--remove-existing-domain-config", "--empty-host-config", "--remove-existing-host-config");
+            configGen.execute(Operations.createAddOperation(Operations.createAddress("host", "tmp")));
 
             paramFilter = new NameFilter() {
                 @Override
@@ -433,7 +433,7 @@ public class WfConfig2EmbeddedScriptHandler implements ProvisionedConfigHandler 
                 args.add("--domain-config=" + domainConfig);
             }
 
-            writer.embedHc(args.toArray(new String[args.size()]));
+            configGen.startHc(args.toArray(new String[args.size()]));
 
             paramFilter = new NameFilter() {
                 @Override
@@ -499,18 +499,43 @@ public class WfConfig2EmbeddedScriptHandler implements ProvisionedConfigHandler 
     @Override
     public void startBatch() throws ProvisioningException {
         messageWriter.verbose("      START BATCH");
-        writer.startComposite();
+        composite = Operations.createCompositeOperation();
     }
 
     @Override
     public void endBatch() throws ProvisioningException {
         messageWriter.verbose("      END BATCH");
-        writer.endComposite();
+        configGen.execute(composite);
+        composite = null;
     }
 
     @Override
     public void done() throws ProvisioningException {
-        writer.stopEmbedded();
+        configGen.stopEmbedded();
+    }
+
+    private void handleOp(ModelNode op) throws ProvisioningException {
+        if(composite != null) {
+            composite.get("steps").add(op);
+        } else {
+            configGen.execute(op);
+        }
+    }
+
+    private void setOpParam(ModelNode op, String name, String value) throws ProvisioningException {
+        ModelNode toSet = null;
+        try {
+            toSet = ModelNode.fromString(value);
+        } catch (Exception e) {
+            final ArgumentValueCallbackHandler handler = new ArgumentValueCallbackHandler();
+            try {
+                StateParser.parse(value, handler, ArgumentValueInitialState.INSTANCE);
+            } catch (CommandFormatException e1) {
+                throw new ProvisioningException("Failed to parse parameter " + name + " '" + value + "'", e1);
+            }
+            toSet = handler.getResult();
+        }
+        op.get(name).set(toSet);
     }
 
     public void cleanup() {

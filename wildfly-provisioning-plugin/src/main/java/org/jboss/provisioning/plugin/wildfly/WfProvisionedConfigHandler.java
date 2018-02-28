@@ -48,7 +48,7 @@ import org.jboss.provisioning.util.PmCollections;
  *
  * @author Alexey Loubyansky
  */
-class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
+public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
 
     private static final String DOMAIN = "domain";
     private static final String HOST = "host";
@@ -356,10 +356,13 @@ class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
     private String stopCommand;
     List<String> tmpConfigs = Collections.emptyList();
 
-    WfProvisionedConfigHandler(ProvisioningRuntime runtime, BufferedWriter writer) {
+    private int configsToHandle;
+
+    public WfProvisionedConfigHandler(ProvisioningRuntime runtime, BufferedWriter writer) {
         this.runtime = runtime;
         this.messageWriter = runtime.getMessageWriter();
         this.writer = writer;
+        this.configsToHandle = runtime.getConfigs().size();
     }
 
     private void reset() {
@@ -536,9 +539,12 @@ class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
     public void done() throws ProvisioningException {
         writeOp(stopCommand);
         reset();
+        --configsToHandle;
+        if(configsToHandle == 0) {
+        }
     }
 
-    void cleanup() {
+    private void cleanup() {
         if(tmpConfigs.isEmpty()) {
             return;
         }

@@ -17,12 +17,15 @@
 package org.jboss.provisioning.plugin.wildfly;
 
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileSystem;
@@ -34,6 +37,7 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -62,12 +66,9 @@ import org.jboss.provisioning.plugin.wildfly.config.CopyPath;
 import org.jboss.provisioning.plugin.wildfly.config.DeletePath;
 import org.jboss.provisioning.plugin.wildfly.config.FilePermission;
 import org.jboss.provisioning.plugin.wildfly.config.WildFlyPackageTasks;
-import org.jboss.provisioning.plugin.wildfly.sandbox.EmbeddedScriptRunner;
-import org.jboss.provisioning.plugin.wildfly.sandbox.WfConfig2EmbeddedScriptHandler;
 import org.jboss.provisioning.runtime.FeaturePackRuntime;
 import org.jboss.provisioning.runtime.PackageRuntime;
 import org.jboss.provisioning.runtime.ProvisioningRuntime;
-import org.jboss.provisioning.state.ProvisionedConfig;
 import org.jboss.provisioning.util.IoUtils;
 import org.jboss.provisioning.util.PmCollections;
 import org.jboss.provisioning.util.PropertyUtils;
@@ -78,6 +79,10 @@ import org.jboss.provisioning.util.ZipUtils;
  * @author Alexey Loubyansky
  */
 public class WfProvisioningPlugin implements ProvisioningPlugin {
+
+    private static final String CONFIG_GEN_METHOD = "generate";
+    private static final String CONFIG_GEN_PATH = "wildfly/wildfly-config-gen.jar";
+    private static final String CONFIG_GEN_CLASS = "org.jboss.provisioning.plugin.wildfly.configgen.WfConfigGenerator";
 
     private ProvisioningRuntime runtime;
     private PropertyResolver versionResolver;
@@ -180,56 +185,59 @@ public class WfProvisioningPlugin implements ProvisioningPlugin {
         if(!runtime.hasConfigs()) {
             return;
         }
-        final Path script = runtime.getTmpPath("wildfly/configs.cli");
-        try {
-            Files.createDirectories(script.getParent());
-        } catch (IOException e1) {
-            throw new ProvisioningException(Errors.mkdirs(script.getParent()));
+
+        final Path configGenJar = runtime.getResource(CONFIG_GEN_PATH);
+        if(!Files.exists(configGenJar)) {
+            throw new ProvisioningException(Errors.pathDoesNotExist(configGenJar));
         }
 
-        final WfConfig2EmbeddedScriptHandler configHandler;
-        //final WfProvisionedConfigHandler configHandler;
-        try(BufferedWriter writer = Files.newBufferedWriter(script)) {
-            configHandler = new WfConfig2EmbeddedScriptHandler(runtime, writer);
-            //configHandler = new WfProvisionedConfigHandler(runtime, writer);
-            for (ProvisionedConfig config : runtime.getConfigs()) {
-                if (messageWriter.isVerboseEnabled()) {
-                    final StringBuilder msg = new StringBuilder(64).append("Feature config");
-                    if (config.getModel() != null) {
-                        msg.append(" model=").append(config.getModel());
-                    }
-                    if (config.getName() != null) {
-                        msg.append(" name=").append(config.getName());
-                    }
-                    messageWriter.verbose(msg);
-                    if (config.hasProperties()) {
-                        messageWriter.verbose("  properties");
-                        for (Map.Entry<String, String> entry : config.getProperties().entrySet()) {
-                            messageWriter.verbose("    %s=%s", entry.getKey(), entry.getValue());
-                        }
-                    }
-                }
-                config.handle(configHandler);
-            }
+        final List<URL> cp = new ArrayList<>();
+        try {
+            cp.add(configGenJar.toUri().toURL());
+            addJars(runtime.getStagedDir(), cp);
         } catch (IOException e) {
-            throw new ProvisioningException(Errors.writeFile(script), e);
+            throw new ProvisioningException("Failed to init classpath for " + runtime.getStagedDir(), e);
         }
 
-        //CliScriptRunner.runCliScript(runtime.getStagedDir(), script, messageWriter);
+        final ClassLoader originalCl = Thread.currentThread().getContextClassLoader();
+        final URLClassLoader configGenCl = new URLClassLoader(cp.toArray(new URL[cp.size()]), originalCl);
+        Thread.currentThread().setContextClassLoader(configGenCl);
         try {
-            EmbeddedScriptRunner.run(runtime.getStagedDir(), script);
-        } catch (Exception e) {
-            throw new ProvisioningException("Failed to generate configs", e);
+            final Class<?> configHandlerCls = configGenCl.loadClass(CONFIG_GEN_CLASS);
+            final Constructor<?> ctor = configHandlerCls.getConstructor();
+            final Method m = configHandlerCls.getMethod(CONFIG_GEN_METHOD, ProvisioningRuntime.class);
+            final Object generator = ctor.newInstance();
+            m.invoke(generator, runtime);
+        } catch (Throwable e) {
+            throw new ProvisioningException("Failed to initialize config generator " + CONFIG_GEN_CLASS, e);
+        } finally {
+            Thread.currentThread().setContextClassLoader(originalCl);
+            try {
+                configGenCl.close();
+            } catch (IOException e) {
+            }
         }
+    }
 
-//        try {
-//            IoUtils.copy(script, Paths.get("/home/aloubyansky/pm-scripts/all-configs.cli"));
-//        } catch (IOException e) {
-//            // TODO Auto-generated catch block
-//            e.printStackTrace();
-//        }
-
-        configHandler.cleanup();
+    private static List<URL> addJars(Path dir, List<URL> urls) throws IOException {
+        Files.walkFileTree(dir, EnumSet.of(FileVisitOption.FOLLOW_LINKS), Integer.MAX_VALUE,
+                new SimpleFileVisitor<Path>() {
+                    @Override
+                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs)
+                        throws IOException {
+                        return FileVisitResult.CONTINUE;
+                    }
+                    @Override
+                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
+                        throws IOException {
+                        if(!file.getFileName().toString().endsWith(".jar")) {
+                            return FileVisitResult.CONTINUE;
+                        }
+                        urls.add(file.toUri().toURL());
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+        return urls;
     }
 
     private void processPackages(final FeaturePackRuntime fp) throws ProvisioningException {

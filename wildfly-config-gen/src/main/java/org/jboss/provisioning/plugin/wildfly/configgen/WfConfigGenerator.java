@@ -15,25 +15,11 @@
  * limitations under the License.
  */
 
-package org.jboss.provisioning.plugin.wildfly.sandbox;
+package org.jboss.provisioning.plugin.wildfly.configgen;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.lang.reflect.Method;
-import java.net.URL;
-import java.net.URLClassLoader;
-import java.nio.file.FileVisitOption;
-import java.nio.file.FileVisitResult;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.EnumSet;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -42,6 +28,10 @@ import org.jboss.as.controller.client.ModelControllerClient;
 import org.jboss.as.controller.client.helpers.ClientConstants;
 import org.jboss.as.controller.client.helpers.Operations;
 import org.jboss.dmr.ModelNode;
+import org.jboss.provisioning.MessageWriter;
+import org.jboss.provisioning.ProvisioningException;
+import org.jboss.provisioning.runtime.ProvisioningRuntime;
+import org.jboss.provisioning.state.ProvisionedConfig;
 import org.jboss.provisioning.util.PmCollections;
 import org.wildfly.core.embedded.EmbeddedManagedProcess;
 import org.wildfly.core.embedded.EmbeddedProcessFactory;
@@ -51,18 +41,51 @@ import org.wildfly.core.embedded.EmbeddedProcessStartException;
  *
  * @author Alexey Loubyansky
  */
-public class EmbeddedScriptRunner {
+public class WfConfigGenerator {
 
-    public static void run(Path jbossHome, Path script) throws Exception {
+    private Long bootTimeout = null;
+
+    private String jbossHome;
+    private EmbeddedManagedProcess embeddedProcess;
+    private ModelControllerClient mcc;
+
+    private boolean hc;
+    private String[] args;
+
+    public void generate(ProvisioningRuntime runtime) throws ProvisioningException {
+
+        this.jbossHome = runtime.getStagedDir().toString();
+        final MessageWriter messageWriter = runtime.getMessageWriter();
+        final WfProvisionedConfigHandler configHandler = new WfProvisionedConfigHandler(runtime, this);
         final Map<?, ?> originalProps = new HashMap<>(System.getProperties());
-        final ClassLoader originalCl = Thread.currentThread().getContextClassLoader();
+
         try {
-            doRun(jbossHome, script);
+            for (ProvisionedConfig config : runtime.getConfigs()) {
+                if (runtime.getMessageWriter().isVerboseEnabled()) {
+                    final StringBuilder msg = new StringBuilder(64).append("Feature config");
+                    if (config.getModel() != null) {
+                        msg.append(" model=").append(config.getModel());
+                    }
+                    if (config.getName() != null) {
+                        msg.append(" name=").append(config.getName());
+                    }
+                    messageWriter.verbose(msg);
+                    if (config.hasProperties()) {
+                        messageWriter.verbose("  properties");
+                        for (Map.Entry<String, String> entry : config.getProperties().entrySet()) {
+                            messageWriter.verbose("    %s=%s", entry.getKey(), entry.getValue());
+                        }
+                    }
+                }
+                config.handle(configHandler);
+            }
+            configHandler.cleanup();
         } finally {
-            Thread.currentThread().setContextClassLoader(originalCl);
+            if(embeddedProcess != null) {
+                stopEmbedded();
+            }
             Set<String> toClear = Collections.emptySet();
-            final Map<?, ?> props = System.getProperties();
-            for(Map.Entry<?, ?> prop : props.entrySet()) {
+            for(Map.Entry<?, ?> prop : System.getProperties().entrySet()) {
                 final Object value = originalProps.get(prop.getKey());
                 if(value != null) {
                     System.setProperty(prop.getKey().toString(), value.toString());
@@ -78,152 +101,41 @@ public class EmbeddedScriptRunner {
         }
     }
 
-    private static void addToCp(ClassLoader cl, List<URL> cp) throws Exception {
-        if(!(cl instanceof URLClassLoader)) {
-            throw new Exception("Expected a URLClassLoader but got " + cl.getClass().getName());
-        }
-        final URL[] cclUrls = ((URLClassLoader)cl).getURLs();
-        for(URL url : cclUrls) {
-            cp.add(url);
-        }
-    }
-
-    private static void doRun(Path jbossHome, Path script) throws Exception {
-
-        final List<URL> cp = new ArrayList<>();
-
-        try {
-            addJars(jbossHome, cp);
-        } catch (IOException e) {
-            throw new Exception("Failed to add JARs from " + jbossHome + " to the classpath list");
-        }
-
-        addToCp(EmbeddedScriptRunner.class.getClassLoader(), cp);
-
-        final URL[] newClUrls = new URL[cp.size()];
-        int i = 0;
-        while(i < cp.size()) {
-            newClUrls[i] = cp.get(i++);
-        }
-
-        final URLClassLoader newCl = new URLClassLoader(newClUrls, null);
-        Thread.currentThread().setContextClassLoader(newCl);
-
-        String className = EmbeddedScriptRunner.class.getName();
-        Class<?> cliTest;
-        try {
-            cliTest = newCl.loadClass(className);
-        } catch (ClassNotFoundException e) {
-            throw new Exception("Failed to load class " + className, e);
-        }
-        Method test;
-        try {
-            test = cliTest.getMethod("run", Map.class);
-        } catch (Exception e) {
-            throw new Exception("Failed to locate method 'run' in " + className, e);
-        }
-
-        try {
-            final Map<String, String> params = new HashMap<>();
-            params.put("jboss.home", jbossHome.toString());
-            params.put("script", script.toString());
-            test.invoke(cliTest.newInstance(), params);
-        } catch (Exception e) {
-            throw new Exception("Failed to execute the script", e);
-        }
-    }
-
-    private static List<URL> addJars(Path dir, List<URL> urls) throws IOException {
-        Files.walkFileTree(dir, EnumSet.of(FileVisitOption.FOLLOW_LINKS), Integer.MAX_VALUE,
-                new SimpleFileVisitor<Path>() {
-                    @Override
-                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs)
-                        throws IOException {
-                        return FileVisitResult.CONTINUE;
-                    }
-                    @Override
-                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
-                        throws IOException {
-                        if(!file.getFileName().toString().endsWith(".jar")) {
-                            return FileVisitResult.CONTINUE;
-                        }
-                        urls.add(file.toUri().toURL());
-                        return FileVisitResult.CONTINUE;
-                    }
-                });
-        return urls;
-    }
-
-    private Long bootTimeout = null;
-
-    private String jbossHome;
-    private EmbeddedManagedProcess embeddedProcess;
-    private ModelControllerClient mcc;
-
-    private boolean hc;
-    private String[] args;
-
-    public void run(Map<String, String> params) throws Exception {
-
-        jbossHome = getParam(params, "jboss.home");
-        final Path script = getPathParam(params, "script");
-
-        final EmbeddedScriptHandler parser = new EmbeddedScriptHandler(this);
-        try(BufferedReader reader = Files.newBufferedReader(script)) {
-            String line = reader.readLine();
-            while(line != null) {
-                parser.handle(line);
-                line = reader.readLine();
-            }
-        } catch (IOException e) {
-            throw new Exception("Failed to read " + script, e);
-        } catch(Throwable e) {
-            Throwable t = e;
-            while(t != null) {
-                System.out.println(t.getClass().getSimpleName() + ": " + t.getMessage());
-                t = t.getCause();
-            }
-            throw new Exception(e);
-        } finally {
-            stopEmbedded();
-        }
-    }
-
-    void startServer(String[] args) throws Exception {
-        //System.out.println("embed server " + Arrays.asList(args));
+    void startServer(String... args) throws ProvisioningException {
+        //System.out.println("embed server " + jbossHome + " " + Arrays.asList(args));
         this.args = args;
         this.hc = false;
         embeddedProcess = EmbeddedProcessFactory.createStandaloneServer(jbossHome, null, null, args);
         try {
             embeddedProcess.start();
         } catch (EmbeddedProcessStartException e) {
-            throw new Exception("Failed to start embedded server", e);
+            throw new ProvisioningException("Failed to start embedded server", e);
         }
         mcc = embeddedProcess.getModelControllerClient();
         waitForServer();
     }
 
-    void startHc(String[] args) throws Exception {
-        //System.out.println("embed hc " + Arrays.asList(args));
+    void startHc(String... args) throws ProvisioningException {
+        //System.out.println("embed hc " + jbossHome + " " + Arrays.asList(args));
         this.args = args;
         this.hc = true;
         embeddedProcess = EmbeddedProcessFactory.createHostController(jbossHome, null, null, args);
         try {
             embeddedProcess.start();
         } catch (EmbeddedProcessStartException e) {
-            throw new Exception("Failed to start embedded hc", e);
+            throw new ProvisioningException("Failed to start embedded hc", e);
         }
         mcc = embeddedProcess.getModelControllerClient();
         //waitForHc();
     }
 
-    void stopEmbedded() throws Exception {
+    void stopEmbedded() throws ProvisioningException {
         //System.out.println("stop embedded");
         if(mcc != null) {
             try {
                 mcc.close();
             } catch (IOException e) {
-                throw new Exception("Failed to close ModelControllerClient", e);
+                throw new ProvisioningException("Failed to close ModelControllerClient", e);
             }
             mcc = null;
         }
@@ -233,7 +145,7 @@ public class EmbeddedScriptRunner {
         }
     }
 
-    void execute(ModelNode op) throws Exception {
+    void execute(ModelNode op) throws ProvisioningException {
         try {
             final ModelNode response = mcc.execute(op);
             if(Operations.isSuccessfulOutcome(response)) {
@@ -301,13 +213,13 @@ public class EmbeddedScriptRunner {
                 }
             }
             buf.append(" on ").append(op).append(": ").append(Operations.getFailureDescription(response));
-            throw new Exception(buf.toString());
+            throw new ProvisioningException(buf.toString());
         } catch (IOException e) {
-            throw new Exception("Failed to execute " + op);
+            throw new ProvisioningException("Failed to execute " + op);
         }
     }
 
-    private void waitForServer() throws Exception {
+    private void waitForServer() throws ProvisioningException {
         if (bootTimeout == null || bootTimeout > 0) {
             // Poll for server state. Alternative would be to get ControlledProcessStateService
             // and do reflection stuff to read the state and register for change notifications
@@ -331,7 +243,7 @@ public class EmbeddedScriptRunner {
                         Thread.sleep(50);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
-                        throw new Exception("Interrupted while waiting for embedded server to start");
+                        throw new ProvisioningException("Interrupted while waiting for embedded server to start");
                     }
                 } else {
                     break;
@@ -342,14 +254,14 @@ public class EmbeddedScriptRunner {
                 assert bootTimeout != null; // we'll assume the loop didn't run for decades
                 // Stop server and restore environment
                 stopEmbedded();
-                throw new Exception("Embedded server did not exit 'starting' status within " +
+                throw new ProvisioningException("Embedded server did not exit 'starting' status within " +
                         TimeUnit.NANOSECONDS.toSeconds(bootTimeout) + " seconds");
             }
 
         }
     }
 
-    private void waitForHc() throws Exception {
+    private void waitForHc() throws ProvisioningException {
         if (bootTimeout == null || bootTimeout > 0) {
             long expired = bootTimeout == null ? Long.MAX_VALUE : System.nanoTime() + bootTimeout;
 
@@ -385,7 +297,7 @@ public class EmbeddedScriptRunner {
                         Thread.sleep(50);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
-                        throw new Exception("Interrupted while waiting for embedded server to start");
+                        throw new ProvisioningException("Interrupted while waiting for embedded server to start");
                     }
                 } else {
                     break;
@@ -396,25 +308,9 @@ public class EmbeddedScriptRunner {
                 assert bootTimeout != null; // we'll assume the loop didn't run for decades
                 // Stop server and restore environment
                 stopEmbedded();
-                throw new Exception("Embedded host controller did not exit 'starting' status within " +
+                throw new ProvisioningException("Embedded host controller did not exit 'starting' status within " +
                         TimeUnit.NANOSECONDS.toSeconds(bootTimeout) + " seconds");
             }
         }
-    }
-
-    private static Path getPathParam(Map<String, String> params, final String param) throws Exception {
-        final Path p = Paths.get(getParam(params, param));
-        if(Files.exists(p)) {
-            return p;
-        }
-        throw new Exception("Path does not exist " + p);
-    }
-
-    private static String getParam(Map<String, String> params, final String param) throws Exception {
-        final String value = params.get(param);
-        if(value == null) {
-            throw new Exception("Missing parameter " + param);
-        }
-        return value;
     }
 }
