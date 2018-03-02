@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,12 +49,24 @@ import org.jboss.provisioning.util.StringUtils;
  */
 public class ResolvedFeatureSpec extends CapabilityProvider {
 
+    private static final Set<String> roots = new HashSet<>();
+    static {
+        roots.add("subsystem.core-management");
+        roots.add("subsystem.elytron");
+        roots.add("subsystem.jmx");
+        roots.add("subsystem.logging");
+        roots.add("subsystem.request-controller");
+        roots.add("subsystem.discovery");
+        roots.add("subsystem.security-manager");
+    }
+
     final ResolvedSpecId id;
     final FeatureSpec xmlSpec;
     private Map<String, ResolvedFeatureParam> resolvedParamSpecs = Collections.emptyMap();
     private Map<String, ResolvedFeatureSpec> resolvedRefTargets;
     private Map<ResolvedFeatureId, FeatureDependencySpec> resolvedDeps;
 
+    final boolean startsBranchAsParent;
 
     public ResolvedFeatureSpec(ResolvedSpecId specId, ParameterTypeProvider typeProvider, FeatureSpec spec) throws ProvisioningException {
         this.id = specId;
@@ -65,6 +78,8 @@ public class ResolvedFeatureSpec extends CapabilityProvider {
                 resolvedParamSpecs = PmCollections.put(resolvedParamSpecs, param.getName(), resolveParamSpec(param, typeProvider));
             }
         }
+
+        startsBranchAsParent = roots.contains(specId.getName());
     }
 
     private ResolvedFeatureParam resolveParamSpec(FeatureParameterSpec paramSpec, ParameterTypeProvider typeProvider) throws ProvisioningException {

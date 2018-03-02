@@ -17,6 +17,11 @@
 
 package org.jboss.provisioning.runtime;
 
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -163,6 +168,10 @@ class ConfigModelStack {
     private List<ResolvedFeature> orderedFeatures = Collections.emptyList();
     private boolean orderReferencedSpec = true;
     private boolean inBatch;
+
+    private List<List<ResolvedFeature>> featureBranches = Collections.emptyList();
+    private List<ResolvedFeature> currentBranch = Collections.emptyList();
+
 
     ConfigModelStack(ConfigId configId, ProvisioningRuntimeBuilder rt) throws ProvisioningException {
         this.id = configId;
@@ -387,9 +396,35 @@ class ConfigModelStack {
                 }
             }
         }
+
         orderedFeatures = new ArrayList<>(features.size());
+
+        currentBranch = new ArrayList<>();
+        featureBranches = new ArrayList<>();
+        featureBranches.add(currentBranch);
+
         for(SpecFeatures features : specFeatures.values()) {
             orderFeaturesInSpec(features, false);
+        }
+
+        final Path file = Paths.get(System.getProperty("user.home")).resolve("pm-scripts").resolve("feature-branches.txt");
+        try {
+            Files.createDirectories(file.getParent());
+        } catch (IOException e) {
+        }
+        try (BufferedWriter writer = Files.newBufferedWriter(file)) {
+            int i = 1;
+            for (List<ResolvedFeature> branch : featureBranches) {
+                writer.write("Branch " + i++);
+                writer.newLine();
+                int j = 1;
+                for (ResolvedFeature feature : branch) {
+                    writer.write("    " + j++ + ". " + feature.getId());
+                    writer.newLine();
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
@@ -540,10 +575,11 @@ class ConfigModelStack {
                 } else {
                     inBatch = true;
                     feature.startBatch();
+                    startNewBranch();
                     endBatch = true;
                 }
                 feature.ordered();
-                orderedFeatures.add(feature);
+                ordered(feature);
                 initiatedCircularRefs.sort(CircularRefInfo.getNextOnPathComparator());
                 for(CircularRefInfo ref : initiatedCircularRefs) {
                     if(orderFeature(ref.nextOnPath) != null) {
@@ -553,14 +589,33 @@ class ConfigModelStack {
                 if(endBatch) {
                     inBatch = false;
                     orderedFeatures.get(orderedFeatures.size() - 1).endBatch();
+                    startNewBranch();
                 }
             }
             orderReferencedSpec = prevOrderRefSpec;
         } else {
             feature.ordered();
-            orderedFeatures.add(feature);
+            ordered(feature);
         }
         return null;
+    }
+
+    private void ordered(ResolvedFeature feature) {
+
+        if(feature.spec.startsBranchAsParent) {
+            startNewBranch();
+        }
+
+        orderedFeatures.add(feature);
+        currentBranch.add(feature);
+    }
+
+    private void startNewBranch() {
+        if(currentBranch.isEmpty()) {
+            return;
+        }
+        currentBranch = new ArrayList<>();
+        featureBranches.add(currentBranch);
     }
 
     private List<CircularRefInfo> orderCapabilityProviders(ResolvedFeature feature, List<CircularRefInfo> circularRefs)
@@ -634,18 +689,14 @@ class ConfigModelStack {
      */
     private List<CircularRefInfo> orderReferencedFeatures(ResolvedFeature feature, Collection<ResolvedFeatureId> refIds, boolean specRefs, List<CircularRefInfo> circularRefs) throws ProvisioningException {
         for(ResolvedFeatureId refId : refIds) {
-            final List<CircularRefInfo> loopedOnFeature = orderReferencedFeature(feature, refId, specRefs);
-            if(loopedOnFeature != null) {
-                if(circularRefs == null) {
-                    circularRefs = loopedOnFeature;
-                } else {
-                    if(circularRefs.size() == 1) {
-                        final CircularRefInfo first = circularRefs.get(0);
-                        circularRefs = new ArrayList<>(1 + loopedOnFeature.size());
-                        circularRefs.add(first);
-                    }
-                    circularRefs.addAll(loopedOnFeature);
-                }
+            final List<CircularRefInfo> newCircularRefs = orderReferencedFeature(feature, refId, specRefs);
+            if(newCircularRefs == null) {
+                continue;
+            }
+            if (circularRefs == null) {
+                circularRefs = newCircularRefs;
+            } else {
+                circularRefs = PmCollections.addAll(circularRefs, newCircularRefs);
             }
         }
         return circularRefs;
