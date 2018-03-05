@@ -154,10 +154,15 @@ public class ResolvedFeatureId {
 
     final ResolvedSpecId specId;
     final Map<String, Object> params;
+    final Boolean child;
 
     ResolvedFeatureId(ResolvedSpecId specId, Map<String, Object> params) {
+        this(specId, params, null);
+    }
+
+    ResolvedFeatureId(ResolvedSpecId specId, Map<String, Object> params, Boolean child) {
         this.specId = specId;
-        Map<String, Object> filtered = Collections.emptyMap();
+        Map<String, Object> filtered = Collections.emptyMap(); // TODO
         for(Map.Entry<String, Object> entry : params.entrySet()) {
             if(!Constants.PM_UNDEFINED.equals(entry.getValue())) {
                 filtered = PmCollections.put(filtered, entry.getKey(), entry.getValue());
@@ -167,6 +172,7 @@ public class ResolvedFeatureId {
             filtered = params;
         }
         this.params = PmCollections.unmodifiable(filtered);
+        this.child = child;
     }
 
     public ResolvedSpecId getSpecId() {
@@ -175,6 +181,10 @@ public class ResolvedFeatureId {
 
     public Map<String, Object> getParams() {
         return params;
+    }
+
+    boolean isChildRef() {
+        return child != null && child;
     }
 
     @Override

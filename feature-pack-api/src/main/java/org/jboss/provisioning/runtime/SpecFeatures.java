@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 Red Hat, Inc. and/or its affiliates
+ * Copyright 2016-2018 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +20,8 @@ package org.jboss.provisioning.runtime;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.jboss.provisioning.ProvisioningException;
+
 /**
  *
  * @author Alexey Loubyansky
@@ -30,7 +32,8 @@ class SpecFeatures {
     private static final byte PROCESSING = 1;
 
     final ResolvedFeatureSpec spec;
-    List<ResolvedFeature> list = new ArrayList<>();
+    private final List<ResolvedFeature> features = new ArrayList<>();
+    private ConfigFeatureBranch branch;
     private byte state = FREE;
 
     SpecFeatures(ResolvedFeatureSpec spec) {
@@ -47,5 +50,29 @@ class SpecFeatures {
 
     void free() {
         state = FREE;
+    }
+
+    void setBranch(ConfigFeatureBranch branch) throws ProvisioningException {
+        if(this.branch != null) {
+            throw new ProvisioningException("The branch has already been set for " + spec.id);
+        }
+        this.branch = branch;
+    }
+
+    public ConfigFeatureBranch getBranch() {
+        return branch;
+    }
+
+    boolean isBranchSet() {
+        return branch != null;
+    }
+
+    void add(ResolvedFeature feature) {
+        features.add(feature);
+        feature.setSpecFeatures(this);
+    }
+
+    List<ResolvedFeature> getFeatures() {
+        return features;
     }
 }

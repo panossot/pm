@@ -456,8 +456,7 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
             return;
         }
 
-        final List<FeatureAnnotation> annotations = spec.getAnnotations();
-        for (FeatureAnnotation annotation : annotations) {
+        for (FeatureAnnotation annotation : spec.getAnnotations()) {
             if(annotation.getName().equals(WfConstants.JBOSS_OP)) {
                 ops.addAll(nextAnnotation(spec, annotation));
             }

@@ -20,7 +20,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,24 +48,15 @@ import org.jboss.provisioning.util.StringUtils;
  */
 public class ResolvedFeatureSpec extends CapabilityProvider {
 
-    private static final Set<String> roots = new HashSet<>();
-    static {
-        roots.add("subsystem.core-management");
-        roots.add("subsystem.elytron");
-        roots.add("subsystem.jmx");
-        roots.add("subsystem.logging");
-        roots.add("subsystem.request-controller");
-        roots.add("subsystem.discovery");
-        roots.add("subsystem.security-manager");
-    }
-
     final ResolvedSpecId id;
     final FeatureSpec xmlSpec;
     private Map<String, ResolvedFeatureParam> resolvedParamSpecs = Collections.emptyMap();
     private Map<String, ResolvedFeatureSpec> resolvedRefTargets;
     private Map<ResolvedFeatureId, FeatureDependencySpec> resolvedDeps;
 
-    final boolean startsBranchAsParent;
+    final boolean startNewBranch;
+    final boolean parentChildrenBranch;
+    final boolean batchBranch;
 
     public ResolvedFeatureSpec(ResolvedSpecId specId, ParameterTypeProvider typeProvider, FeatureSpec spec) throws ProvisioningException {
         this.id = specId;
@@ -79,7 +69,16 @@ public class ResolvedFeatureSpec extends CapabilityProvider {
             }
         }
 
-        startsBranchAsParent = roots.contains(specId.getName());
+        final FeatureAnnotation newFb = xmlSpec.getAnnotation(FeatureAnnotation.NEW_FEATURE_BRANCH);
+        if(newFb != null) {
+            startNewBranch = true;
+            parentChildrenBranch = newFb.hasElementSet(FeatureAnnotation.ELEM_NEW_FEATURE_BRANCH_TYPE, FeatureAnnotation.ELEM_NEW_FEATURE_BRANCH_TYPE_PARENT_CHILDREN, false);
+            batchBranch = newFb.getElementAsBoolean(FeatureAnnotation.ELEM_NEW_FEATURE_BRANCH_BATCH);
+        } else {
+            startNewBranch = false;
+            parentChildrenBranch = false;
+            batchBranch = false;
+        }
     }
 
     private ResolvedFeatureParam resolveParamSpec(FeatureParameterSpec paramSpec, ParameterTypeProvider typeProvider) throws ProvisioningException {
@@ -108,7 +107,7 @@ public class ResolvedFeatureSpec extends CapabilityProvider {
         return xmlSpec.hasAnnotations();
     }
 
-    public List<FeatureAnnotation> getAnnotations() {
+    public Collection<FeatureAnnotation> getAnnotations() {
         return xmlSpec.getAnnotations();
     }
 
@@ -456,12 +455,16 @@ public class ResolvedFeatureSpec extends CapabilityProvider {
 
         ArrayList<Map<String,Object>> paramsList = null;
         Map<String, Object> params = Collections.emptyMap();
+        boolean child = true;
         if(refSpec.hasMappedParams()) {
             for (Map.Entry<String, String> mapping : refSpec.getMappedParams().entrySet()) {
                 final String paramName = mapping.getKey();
                 final String refParamName = mapping.getValue();
 
                 final ResolvedFeatureParam resolvedParam = resolvedParamSpecs.get(paramName);
+                if(child && (!resolvedParam.spec.isFeatureId() || !targetSpec.getSpec().getParam(refParamName).isFeatureId())) {
+                    child = false;
+                }
                 Object paramValue = feature.getResolvedParam(paramName);
                 if (paramValue == null) {
                     paramValue = feature.isUnset(paramName) ? null : resolvedParam.defaultValue;
@@ -470,7 +473,9 @@ public class ResolvedFeatureSpec extends CapabilityProvider {
                         return Collections.emptyList();
                     }
                 }
-
+                if(paramValue.equals(Constants.PM_UNDEFINED)) {
+                    continue;
+                }
                 if(resolvedParam.type.isCollection()) {
                     final Collection<?> col = (Collection<?>) paramValue;
                     if(col.isEmpty()) {
@@ -499,9 +504,6 @@ public class ResolvedFeatureSpec extends CapabilityProvider {
                             paramsList.add(PmCollections.put(PmCollections.clone(idParams), refParamName, item));
                         }
                     }
-                    continue;
-                }
-                if(paramValue.equals(Constants.PM_UNDEFINED)) {
                     continue;
                 }
                 if (paramsList != null) {
@@ -518,6 +520,9 @@ public class ResolvedFeatureSpec extends CapabilityProvider {
                 final String refParamName = paramName;
 
                 final ResolvedFeatureParam resolvedParam = resolvedParamSpecs.get(paramName);
+                if(child && !resolvedParam.spec.isFeatureId()) {
+                    child = false;
+                }
                 Object paramValue = feature.getResolvedParam(paramName);
                 if (paramValue == null) {
                     paramValue = feature.isUnset(paramName) ? null : resolvedParam.defaultValue;
@@ -525,6 +530,9 @@ public class ResolvedFeatureSpec extends CapabilityProvider {
                         assertRefNotNillable(feature, refSpec);
                         return Collections.emptyList();
                     }
+                }
+                if(paramValue.equals(Constants.PM_UNDEFINED)) {
+                    continue;
                 }
 
                 if(resolvedParam.type.isCollection()) {
@@ -555,9 +563,6 @@ public class ResolvedFeatureSpec extends CapabilityProvider {
                             paramsList.add(PmCollections.put(PmCollections.clone(idParams), refParamName, item));
                         }
                     }
-                    continue;
-                }
-                if(paramValue.equals(Constants.PM_UNDEFINED)) {
                     continue;
                 }
                 if (paramsList != null) {
@@ -578,7 +583,7 @@ public class ResolvedFeatureSpec extends CapabilityProvider {
                     // TODO
                     continue;
                 }
-                refIds.add(new ResolvedFeatureId(targetSpec.id, idParams));
+                refIds.add(new ResolvedFeatureId(targetSpec.id, idParams, child));
             }
             if(refIds.isEmpty()) {
                 assertRefNotNillable(feature, refSpec);
@@ -589,7 +594,7 @@ public class ResolvedFeatureSpec extends CapabilityProvider {
             assertRefNotNillable(feature, refSpec);
             return Collections.emptyList();
         }
-        return Collections.singletonList(new ResolvedFeatureId(targetSpec.id, params));
+        return Collections.singletonList(new ResolvedFeatureId(targetSpec.id, params, child));
     }
 
     private void assertRefNotNillable(final ResolvedFeature feature, final FeatureReferenceSpec refSpec)

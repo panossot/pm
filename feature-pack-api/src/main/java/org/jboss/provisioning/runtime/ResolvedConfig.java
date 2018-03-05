@@ -115,6 +115,9 @@ public class ResolvedConfig implements ProvisionedConfig {
         handler.prepare(this);
         ResolvedSpecId lastHandledSpecId = null;
         for(ResolvedFeature feature : features) {
+            if(feature.isBranchStart()) {
+                handler.startBranch();
+            }
             if(feature.isBatchStart()) {
                 handler.startBatch();
             }
@@ -128,6 +131,9 @@ public class ResolvedConfig implements ProvisionedConfig {
             handler.nextFeature(feature);
             if(feature.isBatchEnd()) {
                 handler.endBatch();
+            }
+            if(feature.isBranchEnd()) {
+                handler.endBranch();
             }
         }
         handler.done();
