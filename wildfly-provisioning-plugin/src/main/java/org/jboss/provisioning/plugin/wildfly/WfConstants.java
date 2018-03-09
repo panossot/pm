@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 Red Hat, Inc. and/or its affiliates
+ * Copyright 2016-2018 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,7 +53,9 @@ public interface WfConstants {
     String ADDR_PREF = "addr-pref";
     String ADDR_PARAMS = "addr-params";
     String ADDR_PARAMS_MAPPING = "addr-params-mapping";
+    String JBOSS_OP = "jboss-op";
     String LIST_ADD = "list-add";
+    String NAME = "name";
     String OP_PARAMS = "op-params";
     String OP_PARAMS_MAPPING = "op-params-mapping";
     String WRITE_ATTRIBUTE = "write-attribute";

@@ -110,7 +110,7 @@ class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
                         if (!inAddr) {
                             if (paramFilter.accepts(paramName, j)) {
                                 final ManagedOp mop = new ManagedOp();
-                                mop.name = annotation.getName();
+                                mop.name = WfConstants.WRITE_ATTRIBUTE;
                                 mop.op = WRITE_ATTR;
                                 mop.addrPref = annotation.getElement(WfConstants.ADDR_PREF);
                                 mop.addrParams = addrParams;
@@ -135,7 +135,7 @@ class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
                 for (int i = 0; i < params.size(); i++) {
                     if (i % 2 == 0) {
                         final ManagedOp mop = new ManagedOp();
-                        mop.name = annotation.getName();
+                        mop.name = WfConstants.WRITE_ATTRIBUTE;
                         mop.op = WRITE_ATTR;
                         mop.addrPref = annotation.getElement(WfConstants.ADDR_PREF);
                         mop.addrParams = addrParams;
@@ -154,17 +154,13 @@ class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
     }
 
     private List<ManagedOp> createAddListManagedOperation(ResolvedFeatureSpec spec, FeatureAnnotation annotation) throws ProvisioningException {
-        return createManagedOperation(spec, annotation, LIST_ADD);
+        return createManagedOperation(spec, annotation, WfConstants.LIST_ADD, LIST_ADD);
     }
 
-    private List<ManagedOp> createAddManagedOperation(ResolvedFeatureSpec spec, FeatureAnnotation annotation) throws ProvisioningException {
-        return createManagedOperation(spec, annotation, OP);
-    }
-
-    private List<ManagedOp> createManagedOperation(ResolvedFeatureSpec spec, FeatureAnnotation annotation, int operation) throws ProvisioningException {
+    private List<ManagedOp> createManagedOperation(ResolvedFeatureSpec spec, FeatureAnnotation annotation, String name, int operation) throws ProvisioningException {
         final ManagedOp mop = new ManagedOp();
         mop.reset();
-        mop.name = annotation.getName();
+        mop.name = name;
         mop.op = operation;
         mop.addrPref = annotation.getElement(WfConstants.ADDR_PREF);
 
@@ -486,7 +482,9 @@ class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
 
         final List<FeatureAnnotation> annotations = spec.getAnnotations();
         for (FeatureAnnotation annotation : annotations) {
-            ops.addAll(nextAnnotation(spec, annotation));
+            if(WfConstants.JBOSS_OP.equals(annotation.getName())) {
+                ops.addAll(nextAnnotation(spec, annotation));
+            }
         }
     }
 
@@ -497,15 +495,14 @@ class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
             mop.line = annotation.getElement(WfConstants.LINE);
             return Collections.singletonList(mop);
         }
-        switch (annotation.getName()) {
-            case WfConstants.ADD:
-                return createAddManagedOperation(spec, annotation);
+        final String name = annotation.getElement(WfConstants.NAME);
+        switch (name) {
             case WfConstants.WRITE_ATTRIBUTE:
                 return createWriteAttributeManagedOperation(spec, annotation);
-                case WfConstants.LIST_ADD:
+            case WfConstants.LIST_ADD:
                 return createAddListManagedOperation(spec, annotation);
             default:
-                return createManagedOperation(spec, annotation, OP);
+                return createManagedOperation(spec, annotation, name, OP);
         }
     }
 

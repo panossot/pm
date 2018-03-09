@@ -27,6 +27,7 @@ import javax.xml.stream.XMLStreamException;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.Property;
 import org.jboss.provisioning.ProvisioningDescriptionException;
+import org.jboss.provisioning.plugin.wildfly.WfConstants;
 import org.jboss.provisioning.spec.FeatureAnnotation;
 import org.jboss.provisioning.spec.FeatureParameterSpec;
 import org.jboss.provisioning.spec.FeatureReferenceSpec;
@@ -147,7 +148,8 @@ public class FeatureSpecExporter {
     private static FeatureAnnotation toFeatureAnnotation(ModelNode feature) {
         if (feature.hasDefined("annotation")) {
             ModelNode annotationNode = feature.require("annotation");
-            FeatureAnnotation annotation = new FeatureAnnotation(annotationNode.require("name").asString());
+            FeatureAnnotation annotation = new FeatureAnnotation(WfConstants.JBOSS_OP);
+            annotation.setElement(WfConstants.NAME, annotationNode.require("name").asString());
             for (Property property : annotationNode.asPropertyList()) {
                 annotation.setElement(property.getName(), property.getValue().asString());
             }
