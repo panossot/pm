@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -208,6 +209,13 @@ public class WfProvisioningPlugin implements ProvisioningPlugin {
             final Method m = configHandlerCls.getMethod(CONFIG_GEN_METHOD, ProvisioningRuntime.class);
             final Object generator = ctor.newInstance();
             m.invoke(generator, runtime);
+        } catch(InvocationTargetException e) {
+            final Throwable cause = e.getCause();
+            if(cause instanceof ProvisioningException) {
+                throw (ProvisioningException)cause;
+            } else {
+                throw new ProvisioningException("Failed to invoke config generator " + CONFIG_GEN_CLASS, cause);
+            }
         } catch (Throwable e) {
             throw new ProvisioningException("Failed to initialize config generator " + CONFIG_GEN_CLASS, e);
         } finally {
