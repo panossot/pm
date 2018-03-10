@@ -55,7 +55,7 @@ public class FeatureSpecExporter {
                 rootFeatures = rootNode.get("children").asPropertyList();
             }
             for (Property childFeature : rootFeatures) {
-                toFeatureSpec(childFeature, specs, inheritedFeatures);
+                toFeatureSpec(childFeature, specs, inheritedFeatures, 0);
             }
             if(Files.notExists(directory)) {
                 Files.createDirectory(directory);
@@ -69,10 +69,13 @@ public class FeatureSpecExporter {
         }
     }
 
-    private static void toFeatureSpec(Property featureProperty, List<FeatureSpec> specs, Map<String, String> inheritedFeatures) throws ProvisioningDescriptionException {
+    private static void toFeatureSpec(Property featureProperty, List<FeatureSpec> specs, Map<String, String> inheritedFeatures, int level) throws ProvisioningDescriptionException {
         ModelNode feature = featureProperty.getValue();
         FeatureSpec.Builder builder = FeatureSpec.builder(featureProperty.getName());
-        FeatureAnnotation annotation = toFeatureAnnotation(feature);
+        if(level == 1 && featureProperty.getName().contains("subsystem.")) {
+            builder.addAnnotation(FeatureAnnotation.parentChildrenBranch());
+        }
+        final FeatureAnnotation annotation = toFeatureAnnotation(feature);
         if (annotation != null) {
             builder.addAnnotation(annotation);
         }
@@ -129,7 +132,7 @@ public class FeatureSpecExporter {
         specs.add(builder.build());
         if (feature.hasDefined("children")) {
             for (Property childFeature : feature.get("children").asPropertyList()) {
-                toFeatureSpec(childFeature, specs, inheritedFeatures);
+                toFeatureSpec(childFeature, specs, inheritedFeatures, level + 1);
             }
         }
     }
@@ -149,7 +152,7 @@ public class FeatureSpecExporter {
         if (feature.hasDefined("annotation")) {
             ModelNode annotationNode = feature.require("annotation");
             FeatureAnnotation annotation = new FeatureAnnotation(WfConstants.JBOSS_OP);
-            annotation.setElement(WfConstants.NAME, annotationNode.require("name").asString());
+            annotation.setElement(WfConstants.NAME, annotationNode.require(WfConstants.NAME).asString());
             for (Property property : annotationNode.asPropertyList()) {
                 annotation.setElement(property.getName(), property.getValue().asString());
             }
