@@ -41,6 +41,7 @@ class ConfigFeatureBranch {
 
     ConfigFeatureBranch(int index, boolean batch) {
         this.id = index;
+        this.batch = batch;
     }
 
     List<ResolvedFeature> getFeatures() {

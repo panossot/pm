@@ -133,7 +133,7 @@ class DefaultBranchedConfigArranger {
         try (BufferedWriter writer = Files.newBufferedWriter(file)) {
             int i = 1;
             for (ConfigFeatureBranch branch : featureBranches) {
-                writer.write("Branch " + i++);
+                writer.write("Branch " + i++ + " batch=" + branch.isBatch());
                 writer.newLine();
                 int j = 1;
                 for (ResolvedFeature feature : branch.getFeatures()) {
