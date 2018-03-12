@@ -48,7 +48,7 @@ public class RefAndStaticCapTestCase extends PmInstallFeaturePackTestBase {
 
     public static class ConfigHandler extends TestProvisionedConfigHandler {
         @Override
-        protected boolean enableLogging() {
+        protected boolean loggingEnabled() {
             return false;
         }
         @Override

@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 Red Hat, Inc. and/or its affiliates
+ * Copyright 2016-2018 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,5 +46,12 @@ public interface Constants {
 
     String PM_UNDEFINED = "PM_UNDEFINED";
 
+    // BUILT-IN TYPES
     String BUILT_IN_TYPE_STRING = "String";
+
+    // SYSTEM PROPERTIES
+    String PROP_CONFIG_ARRANGER = "pm.config.arranger";
+
+    // CONFIG ARRANGERS
+    String CONFIG_ARRANGER_SPEC_ONLY = "spec-only";
 }

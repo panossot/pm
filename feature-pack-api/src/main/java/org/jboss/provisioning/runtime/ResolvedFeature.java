@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 Red Hat, Inc. and/or its affiliates
+ * Copyright 2016-2018 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
 import org.jboss.provisioning.Errors;
 import org.jboss.provisioning.ProvisioningDescriptionException;
 import org.jboss.provisioning.ProvisioningException;
@@ -45,8 +44,8 @@ public class ResolvedFeature extends CapabilityProvider implements ProvisionedFe
     private static final byte SCHEDULED = 1;
     private static final byte ORDERED = 2;
 
-    private static final byte BATCH_START = 1;
-    private static final byte BATCH_END = 2;
+    private static final byte START = 1;
+    private static final byte END = 2;
 
     final int includeNo;
     final ResolvedFeatureId id;
@@ -58,6 +57,12 @@ public class ResolvedFeature extends CapabilityProvider implements ProvisionedFe
 
     private byte orderingState = FREE;
     private byte batchControl;
+    private boolean branchStart;
+    private boolean branchEnd;
+
+    private SpecFeatures specFeatures;
+    ConfigFeatureBranch branch;
+    Map<ConfigFeatureBranch, Boolean> branchDeps = new HashMap<>();
 
     ResolvedFeature(ResolvedFeatureId id, ResolvedFeatureSpec spec, int includeNo) {
         this.includeNo = includeNo;
@@ -128,28 +133,53 @@ public class ResolvedFeature extends CapabilityProvider implements ProvisionedFe
             throw new IllegalStateException();
         }
         orderingState = ORDERED;
-        provided();
-        spec.provided();
+        provided(branch);
+        spec.provided(branch);
+        branchDeps = null;
     }
 
     void free() {
         orderingState = FREE;
+        branchDeps.clear();
+    }
+
+    void addBranchDep(ConfigFeatureBranch branchDep, boolean child) {
+        final Boolean prevChild = branchDeps.get(branchDep);
+        if(prevChild == null || !prevChild && child) {
+            branchDeps.put(branchDep, child);
+        }
     }
 
     void startBatch() {
-        batchControl = BATCH_START;
+        batchControl = START;
     }
 
     void endBatch() {
-        batchControl = BATCH_END;
+        batchControl = batchControl == START ? 0 : END;
     }
 
     boolean isBatchStart() {
-        return batchControl == BATCH_START;
+        return batchControl == START;
     }
 
     boolean isBatchEnd() {
-        return batchControl == BATCH_END;
+        return batchControl == END;
+    }
+
+    void startBranch() {
+        branchStart = true;
+    }
+
+    void endBranch() {
+        branchEnd = true;
+    }
+
+    boolean isBranchStart() {
+        return branchStart;
+    }
+
+    boolean isBranchEnd() {
+        return branchEnd;
     }
 
     public void addDependency(ResolvedFeatureId id, FeatureDependencySpec depSpec) throws ProvisioningDescriptionException {
@@ -336,6 +366,14 @@ public class ResolvedFeature extends CapabilityProvider implements ProvisionedFe
 
     List<ResolvedFeatureId> resolveRefs() throws ProvisioningException {
         return spec.resolveRefs(this);
+    }
+
+    void setSpecFeatures(SpecFeatures specFeatures) {
+        this.specFeatures = specFeatures;
+    }
+
+    SpecFeatures getSpecFeatures() {
+        return specFeatures;
     }
 
     @Override

@@ -141,13 +141,14 @@ public class WfDiffPlugin implements DiffPlugin {
                         address.put(elt.getName(), elt.getValue().asString());
                     }
                     FeatureConfig featureConfig = FeatureConfig.newConfig(specName).setOrigin(dependencySpec.fpName);
-                    resolveAddressParams(featureConfig, address, resolvedSpec.getAnnotations().get(0));
+                    final FeatureAnnotation firstAnnotation = resolvedSpec.getAnnotations().iterator().next();
+                    resolveAddressParams(featureConfig, address, firstAnnotation);
                     Map<String, String> params = new HashMap<>();
                     if (feature.require("feature").hasDefined("params")) {
                         for (Property elt : feature.require("feature").require("params").asPropertyList()) {
                             params.put(elt.getName(), elt.getValue().asString());
                         }
-                        resolveParams(featureConfig, params, resolvedSpec.getAnnotations().get(0));
+                        resolveParams(featureConfig, params, firstAnnotation);
                     }
                     if (feature.require("feature").require("exclude").asBoolean()) {
                         if (!includedConfigBuilders.containsKey(dependencySpec.gav)) {

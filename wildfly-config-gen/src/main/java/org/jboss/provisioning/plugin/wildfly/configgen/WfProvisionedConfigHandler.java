@@ -14,12 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jboss.provisioning.plugin.wildfly;
+
+package org.jboss.provisioning.plugin.wildfly.configgen;
 
 import static org.jboss.provisioning.Constants.PM_UNDEFINED;
 
-import java.io.BufferedWriter;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -29,6 +28,12 @@ import java.util.List;
 import java.util.Set;
 import java.util.StringTokenizer;
 
+import org.jboss.as.cli.CommandFormatException;
+import org.jboss.as.cli.parsing.StateParser;
+import org.jboss.as.cli.parsing.arguments.ArgumentValueCallbackHandler;
+import org.jboss.as.cli.parsing.arguments.ArgumentValueInitialState;
+import org.jboss.as.controller.client.helpers.Operations;
+import org.jboss.dmr.ModelNode;
 import org.jboss.provisioning.ArtifactCoords;
 import org.jboss.provisioning.Constants;
 import org.jboss.provisioning.Errors;
@@ -36,6 +41,7 @@ import org.jboss.provisioning.MessageWriter;
 import org.jboss.provisioning.ProvisioningDescriptionException;
 import org.jboss.provisioning.ProvisioningException;
 import org.jboss.provisioning.plugin.ProvisionedConfigHandler;
+import org.jboss.provisioning.plugin.wildfly.WfConstants;
 import org.jboss.provisioning.runtime.ProvisioningRuntime;
 import org.jboss.provisioning.runtime.ResolvedFeatureSpec;
 import org.jboss.provisioning.spec.FeatureAnnotation;
@@ -48,7 +54,7 @@ import org.jboss.provisioning.util.PmCollections;
  *
  * @author Alexey Loubyansky
  */
-class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
+public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
 
     private static final String DOMAIN = "domain";
     private static final String HOST = "host";
@@ -249,84 +255,85 @@ class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
             op = OP;
         }
 
-        String toCommandLine(ProvisionedFeature feature) throws ProvisioningException {
-            final String line;
-            if (this.line != null) {
-                line = this.line;
-            } else {
-                final StringBuilder buf = new StringBuilder();
-                if (addrPref != null) {
-                    buf.append(addrPref);
-                }
+        private void writeOp(ProvisionedFeature feature) throws ProvisioningException {
+            final ModelNode op = writeOpAddress(feature);
+            if (!opParams.isEmpty()) {
                 int i = 0;
-                while(i < addrParams.size()) {
-                    String value = feature.getConfigParam(addrParams.get(i++));
-                    if (value == null || PM_UNDEFINED.equals(value) || LIST_UNDEFINED.equals(value)) {
-                        continue; // TODO perhaps throw an error in case it's undefined
+                while (i < opParams.size()) {
+                    String value = feature.getConfigParam(opParams.get(i++));
+                    if (value == null) {
+                        continue;
                     }
-                    buf.append('/').append(addrParams.get(i++)).append('=').append(value);
-
+                    if (PM_UNDEFINED.equals(value) || LIST_UNDEFINED.equals(value)) {
+                        // value = UNDEFINED;
+                        continue;
+                    }
+                    setOpParam(op, opParams.get(i++), value.trim().isEmpty() ? '\"' + value + '\"' : value);
                 }
-                buf.append(':').append(name);
-                switch(op) {
-                    case OP: {
-                        if (!opParams.isEmpty()) {
-                            boolean comma = false;
-                            i = 0;
-                            while(i < opParams.size()) {
-                                String value = feature.getConfigParam(opParams.get(i++));
-                                if (value == null) {
-                                    continue;
-                                }
-                                if (PM_UNDEFINED.equals(value)|| LIST_UNDEFINED.equals(value)) {
-                                    //value = UNDEFINED;
-                                    continue;
-                                }
-                                if (comma) {
-                                    buf.append(',');
-                                } else {
-                                    comma = true;
-                                    buf.append('(');
-                                }
-                                buf.append(opParams.get(i++)).append('=');
-                                if(value.trim().isEmpty()) {
-                                    buf.append('\"').append(value).append('\"');
-                                } else {
-                                    buf.append(value);
-                                }
-                            }
-                            if (comma) {
-                                buf.append(')');
-                            }
-                        }
-                        break;
-                    }
-                    case LIST_ADD: {
-                        String value = feature.getConfigParam(opParams.get(0));
-                        if (value == null) {
-                            throw new ProvisioningDescriptionException(opParams.get(0) + " parameter is null: " + feature);
-                        }
-                        if (PM_UNDEFINED.equals(value)) {
-                            value = UNDEFINED;
-                        }
-                        buf.append("(name=").append(opParams.get(1)).append(",value=").append(value).append(')');
-                        break;
-                    }
-                    case WRITE_ATTR: {
-                        return writeAttributes(buf.toString(), feature);
-                    }
-                    default:
-
-                }
-                line = buf.toString();
             }
-            return line;
+            handleOp(op);
         }
 
-        private String writeAttributes(final String prefix, ProvisionedFeature feature) throws ProvisioningDescriptionException, ProvisioningException {
+        private void writeList(ProvisionedFeature feature) throws ProvisioningException {
+            final ModelNode op = writeOpAddress(feature);
+            String value = feature.getConfigParam(opParams.get(0));
+            if (value == null) {
+                throw new ProvisioningDescriptionException(opParams.get(0) + " parameter is null: " + feature);
+            }
+            if (PM_UNDEFINED.equals(value)) {
+                value = UNDEFINED;
+            }
+            op.get("name").set(opParams.get(1));
+            setOpParam(op, "value", value);
+            handleOp(op);
+        }
+
+        private ModelNode writeOpAddress(ProvisionedFeature feature) throws ProvisioningException {
+            final ModelNode op = Operations.createOperation(name);
+            if(addrParams.isEmpty()) {
+                return op;
+            }
+            final ModelNode addr = Operations.getOperationAddress(op);
             int i = 0;
-            StringBuilder builder = new StringBuilder();
-            boolean needNewLine = false;
+            while (i < addrParams.size()) {
+                String value = feature.getConfigParam(addrParams.get(i++));
+                if (value == null || PM_UNDEFINED.equals(value) || LIST_UNDEFINED.equals(value)) {
+                    continue; // TODO perhaps throw an error in case it's undefined
+                }
+                addr.add(addrParams.get(i++), value);
+            }
+            return op;
+        }
+
+        void toCommandLine(ProvisionedFeature feature) throws ProvisioningException {
+            if (this.line != null) {
+                throw new ProvisioningException("Unsupported line annotation " + this.line);
+            }
+
+            if (addrPref != null) {
+                throw new ProvisioningException("Unsupported addrPref annotation " + addrPref);
+            }
+
+            switch (op) {
+                case OP: {
+                    writeOp(feature);
+                    break;
+                }
+                case LIST_ADD: {
+                    writeList(feature);
+                    break;
+                }
+                case WRITE_ATTR: {
+                    writeAttributes(feature);
+                    break;
+                }
+                default:
+                    throw new ProvisioningException("Unexpected op " + op);
+            }
+        }
+
+        private void writeAttributes(ProvisionedFeature feature) throws ProvisioningDescriptionException, ProvisioningException {
+            int i = 0;
             while (i < opParams.size()) {
                 Object value = feature.getResolvedParam(opParams.get(i++));
                 if (value == null) {
@@ -335,57 +342,33 @@ class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
                 if (PM_UNDEFINED.equals(value.toString())|| LIST_UNDEFINED.equals(value.toString())) {
                     value = UNDEFINED;
                 }
-                builder.append(prefix).append("(name=").append(opParams.get(i++)).append(",value=").append(value).append(')');
-                if(needNewLine) {
-                    builder.append(System.lineSeparator());
-                }
-                needNewLine = true;
+                final ModelNode op = writeOpAddress(feature);
+                op.get("name").set(opParams.get(i++));
+                setOpParam(op, "value", value.toString());
+                handleOp(op);
             }
-            return builder.toString();
         }
-
     }
+
     private final ProvisioningRuntime runtime;
     private final MessageWriter messageWriter;
-    private final BufferedWriter writer;
+    private final WfConfigGenerator configGen;
 
     private List<ManagedOp> ops = new ArrayList<>();
     private NameFilter paramFilter;
 
-    private String stopCommand;
-    List<String> tmpConfigs = Collections.emptyList();
+    private List<String> tmpConfigs = Collections.emptyList();
 
-    WfProvisionedConfigHandler(ProvisioningRuntime runtime, BufferedWriter writer) {
+    private ModelNode composite;
+
+    public WfProvisionedConfigHandler(ProvisioningRuntime runtime, WfConfigGenerator configGen) throws ProvisioningException {
         this.runtime = runtime;
         this.messageWriter = runtime.getMessageWriter();
-        this.writer = writer;
-    }
-
-    private void reset() {
-        stopCommand = null;
-    }
-
-    private void writeOp(String op) throws ProvisioningException {
-        try {
-            writer.write(op);
-            writer.newLine();
-        } catch(IOException e) {
-            throw new ProvisioningException("Failed to write operation: " + op, e);
-        }
+        this.configGen = configGen;
     }
 
     @Override
     public void prepare(ProvisionedConfig config) throws ProvisioningException {
-        reset();
-        final StringBuilder configEcho = new StringBuilder();
-        configEcho.append("echo &config ");
-        if(config.getModel() != null) {
-            configEcho.append("model ").append(config.getModel()).append(' ');
-        }
-        if(config.getName() != null) {
-            configEcho.append("named ").append(config.getName());
-        }
-        writeOp(configEcho.toString());
 
         final String logFile;
         if(STANDALONE.equals(config.getModel())) {
@@ -394,9 +377,7 @@ class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
                 throw new ProvisioningException("Config " + config.getName() + " of model " + config.getModel() + " is missing property config-name");
             }
 
-
-            writeOp("embed-server --admin-only=true --empty-config --remove-existing --server-config=" + logFile
-                    + " --jboss-home=" + runtime.getStagedDir());
+            configGen.startServer("--server-config=" + logFile, "--admin-only", "--internal-empty-config", "--internal-remove-config");
 
             paramFilter = new NameFilter() {
                 @Override
@@ -404,8 +385,6 @@ class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
                     return position > 0 || !("profile".equals(name) || HOST.equals(name));
                 }
             };
-
-            stopCommand = "stop-embedded-server";
         } else if(DOMAIN.equals(config.getModel())) {
             logFile = config.getProperties().get(DOMAIN_CONFIG_NAME);
             if (logFile == null) {
@@ -420,9 +399,8 @@ class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
                 hostConfig = tmpConfig;
             }
 
-            writeOp("embed-host-controller --empty-host-config --remove-existing-host-config --empty-domain-config --remove-existing-domain-config --host-config="
-                    + hostConfig + " --domain-config=" + logFile + " --jboss-home=" + runtime.getStagedDir());
-            writeOp("/host=tmp:add");
+            configGen.startHc("--domain-config=" + logFile, "--host-config=" + hostConfig, "--empty-domain-config", "--remove-existing-domain-config", "--empty-host-config", "--remove-existing-host-config");
+            configGen.execute(Operations.createAddOperation(Operations.createAddress("host", "tmp")));
 
             paramFilter = new NameFilter() {
                 @Override
@@ -430,7 +408,6 @@ class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
                     return position > 0 || !HOST.equals(name);
                 }
             };
-            stopCommand = "stop-embedded-host-controller";
         } else if (HOST.equals(config.getModel())) {
             logFile = config.getProperties().get(HOST_CONFIG_NAME);
             if (logFile == null) {
@@ -438,21 +415,21 @@ class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
                         + " is missing property host-config-name");
             }
 
-            final StringBuilder embedBuf = new StringBuilder();
-            embedBuf.append("embed-host-controller --empty-host-config --remove-existing-host-config --host-config=")
-                    .append(logFile);
-            final String domainConfig = config.getProperties().get(DOMAIN_CONFIG_NAME);
+            final List<String> args = new ArrayList<>();
+            args.add("--empty-host-config");
+            args.add("--remove-existing-host-config");
+            args.add("--host-config=" + logFile);
+            String domainConfig = config.getProperties().get(DOMAIN_CONFIG_NAME);
             if (domainConfig == null) {
-                final String tmpConfig = TMP_CONFIG + tmpConfigs.size() + DOT_XML;
-                embedBuf.append(" --empty-domain-config --remove-existing-domain-config --domain-config=")
-                        .append(tmpConfig);
-                tmpConfigs = PmCollections.add(tmpConfigs, tmpConfig);
+                args.add("--empty-domain-config");
+                args.add("--remove-existing-domain-config");
+                args.add("--domain-config=" + TMP_CONFIG + tmpConfigs.size() + DOT_XML);
+                tmpConfigs = PmCollections.add(tmpConfigs, domainConfig);
             } else {
-                embedBuf.append(" --domain-config=").append(domainConfig);
+                args.add("--domain-config=" + domainConfig);
             }
-            embedBuf.append(" --jboss-home=").append(runtime.getStagedDir());
 
-            writeOp(embedBuf.toString());
+            configGen.startHc(args.toArray(new String[args.size()]));
 
             paramFilter = new NameFilter() {
                 @Override
@@ -461,7 +438,6 @@ class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
                     return !"profile".equals(name);
                 }
             };
-            stopCommand = "stop-embedded-host-controller";
         } else {
             throw new ProvisioningException("Unsupported config model " + config.getModel());
         }
@@ -480,9 +456,8 @@ class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
             return;
         }
 
-        final List<FeatureAnnotation> annotations = spec.getAnnotations();
-        for (FeatureAnnotation annotation : annotations) {
-            if(WfConstants.JBOSS_OP.equals(annotation.getName())) {
+        for (FeatureAnnotation annotation : spec.getAnnotations()) {
+            if(annotation.getName().equals(WfConstants.JBOSS_OP)) {
                 ops.addAll(nextAnnotation(spec, annotation));
             }
         }
@@ -513,31 +488,53 @@ class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
             return;
         }
         for(ManagedOp op : ops) {
-            final String line = op.toCommandLine(feature);
-            messageWriter.verbose("      %s", line);
-            writeOp(line);
+            op.toCommandLine(feature);
         }
     }
 
     @Override
     public void startBatch() throws ProvisioningException {
         messageWriter.verbose("      START BATCH");
-        writeOp("batch");
+        composite = Operations.createCompositeOperation();
     }
 
     @Override
     public void endBatch() throws ProvisioningException {
         messageWriter.verbose("      END BATCH");
-        writeOp("run-batch");
+        configGen.execute(composite);
+        composite = null;
     }
 
     @Override
     public void done() throws ProvisioningException {
-        writeOp(stopCommand);
-        reset();
+        configGen.stopEmbedded();
     }
 
-    void cleanup() {
+    private void handleOp(ModelNode op) throws ProvisioningException {
+        if(composite != null) {
+            composite.get("steps").add(op);
+        } else {
+            configGen.execute(op);
+        }
+    }
+
+    private void setOpParam(ModelNode op, String name, String value) throws ProvisioningException {
+        ModelNode toSet = null;
+        try {
+            toSet = ModelNode.fromString(value);
+        } catch (Exception e) {
+            final ArgumentValueCallbackHandler handler = new ArgumentValueCallbackHandler();
+            try {
+                StateParser.parse(value, handler, ArgumentValueInitialState.INSTANCE);
+            } catch (CommandFormatException e1) {
+                throw new ProvisioningException("Failed to parse parameter " + name + " '" + value + "'", e1);
+            }
+            toSet = handler.getResult();
+        }
+        op.get(name).set(toSet);
+    }
+
+    public void cleanup() {
         if(tmpConfigs.isEmpty()) {
             return;
         }
@@ -597,4 +594,4 @@ class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
         }
         return list;
     }
-    }
+}

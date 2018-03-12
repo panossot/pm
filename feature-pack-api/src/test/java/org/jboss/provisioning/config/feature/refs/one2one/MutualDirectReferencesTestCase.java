@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 Red Hat, Inc. and/or its affiliates
+ * Copyright 2016-2018 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -48,6 +48,9 @@ public class MutualDirectReferencesTestCase extends PmInstallFeaturePackTestBase
     private static final Gav FP_GAV = ArtifactCoords.newGav("org.jboss.pm.test", "fp1", "1.0.0.Final");
 
     public static class ConfigHandler extends TestProvisionedConfigHandler {
+        protected boolean loggingEnabled() {
+            return false;
+        }
         @Override
         protected String[] initEvents() {
             return new String[] {

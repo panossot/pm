@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 Red Hat, Inc. and/or its affiliates
+ * Copyright 2016-2018 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,6 +33,8 @@ public abstract class TestProvisionedConfigHandler implements ProvisionedConfigH
 
     private static final String BATCH_START = "START BATCH";
     private static final String BATCH_END = "END BATCH";
+    private static final String BRANCH_START = "START BRANCH";
+    private static final String BRANCH_END = "END BRANCH";
 
     protected static String batchStartEvent() {
         return BATCH_START;
@@ -40,6 +42,14 @@ public abstract class TestProvisionedConfigHandler implements ProvisionedConfigH
 
     protected static String batchEndEvent() {
         return BATCH_END;
+    }
+
+    protected static String branchStartEvent() {
+        return BRANCH_START;
+    }
+
+    protected static String branchEndEvent() {
+        return BRANCH_END;
     }
 
     protected static String featurePackEvent(ArtifactCoords.Gav fpGav) {
@@ -54,23 +64,46 @@ public abstract class TestProvisionedConfigHandler implements ProvisionedConfigH
         return "  " + id;
     }
 
-    protected boolean logEvents = enableLogging();
+    protected final boolean logEvents = loggingEnabled();
     private int i = 0;
     private final String[] events;
+    private final boolean branchesOn = branchesEnabled();
 
     protected TestProvisionedConfigHandler() {
-        events = initEvents();
+        try {
+            events = initEvents();
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to initialize events", e);
+        }
     }
 
-    protected boolean enableLogging() {
+    protected boolean loggingEnabled() {
         return false;
     }
 
-    protected abstract String[] initEvents();
+    protected boolean branchesEnabled() {
+        return false;
+    }
+
+    protected abstract String[] initEvents() throws Exception;
 
     @Override
     public void prepare(ProvisionedConfig config) {
         i = 0;
+    }
+
+    @Override
+    public void startBranch() {
+        if(branchesOn) {
+            assertNextEvent(branchStartEvent());
+        }
+    }
+
+    @Override
+    public void endBranch() {
+        if(branchesOn) {
+            assertNextEvent(branchEndEvent());
+        }
     }
 
     @Override

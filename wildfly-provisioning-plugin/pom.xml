@@ -55,6 +55,7 @@
           <artifactId>aesh-readline</artifactId>
         </exclusion>
       </exclusions>
+      <scope>compile</scope>
     </dependency>
     <dependency>
       <groupId>org.wildfly.core</groupId>
@@ -63,6 +64,7 @@
     <dependency>
       <groupId>com.io7m.xom</groupId>
       <artifactId>xom</artifactId>
+      <scope>compile</scope>
     </dependency>
 
     <dependency>
@@ -109,33 +111,36 @@
             <configuration>
               <artifactSet>
                 <excludes>
+                  <exclude>org.aesh:aesh</exclude>
+                  <exclude>org.aesh:aesh-extensions</exclude>
+                  <exclude>org.jboss:jboss-dmr</exclude>
+                  <exclude>org.jboss:jboss-vfs</exclude>
+                  <exclude>org.jboss.logging:jboss-logging</exclude>
+                  <exclude>org.jboss.logmanager:jboss-logmanager</exclude>
+                  <exclude>org.jboss.marshalling:jboss-marshalling</exclude>
+                  <exclude>org.jboss.marshalling:jboss-marshalling-river</exclude>
                   <exclude>org.jboss.modules:jboss-modules</exclude>
+                  <exclude>org.jboss.msc:jboss-msc</exclude>
                   <exclude>org.jboss.pm:feature-pack-api</exclude>
-                  <!--<exclude>org.wildfly.core:wildfly-cli</exclude>
+                  <exclude>org.jboss.remoting:jboss-remoting</exclude>
+                  <exclude>org.jboss.remotingjmx:remoting-jmx</exclude>
+                  <exclude>org.jboss.stdio:jboss-stdio</exclude>
+                  <exclude>org.jboss.threads:jboss-threads</exclude>
+                  <exclude>org.jboss.xnio:xnio-api</exclude>
+                  <exclude>org.jboss.xnio:xnio-nio</exclude>
+                  <exclude>org.wildfly.client:wildfly-client-config</exclude>
+                  <exclude>org.wildfly.common:wildfly-common</exclude>
+                  <exclude>org.wildfly.core:wildfly-embedded</exclude>
+                  <exclude>org.wildfly.core:wildfly-cli</exclude>
                   <exclude>org.wildfly.core:wildfly-controller-client</exclude>
-                  <exclude>org.wildfly.core:wildfly-protocol</exclude>-->
+                  <exclude>org.wildfly.core:wildfly-launcher</exclude>
+                  <exclude>org.wildfly.core:wildfly-protocol</exclude>
+                  <exclude>org.wildfly.security:wildfly-elytron</exclude>
+                  <exclude>xalan:xalan</exclude>
+                  <exclude>xerces:xercesImpl</exclude>
+                  <exclude>xml-apis:xml-apis</exclude>
                 </excludes>
               </artifactSet>
-              <filters>
-                <filter>
-                  <artifact>org.aesh:aesh</artifact>
-                  <excludes>
-                    <exclude>*.class</exclude>
-                  </excludes>
-                </filter>
-              </filters>
-              <!--
-              <artifactSet>
-                <excludes>
-                  <exclude>classworlds:classworlds</exclude>
-                  <exclude>junit:junit</exclude>
-                  <exclude>jmock:*</exclude>
-                  <exclude>*:xml-apis</exclude>
-                  <exclude>org.apache.maven:lib:tests</exclude>
-                  <exclude>log4j:log4j:jar:</exclude>
-                </excludes>
-              </artifactSet>
-              -->
             </configuration>
           </execution>
         </executions>

@@ -19,6 +19,7 @@ package org.jboss.provisioning.runtime;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 import org.jboss.provisioning.util.PmCollections;
 
@@ -34,6 +35,7 @@ class CapabilityProviders {
     // features providing the capability of specs that don't provide the capability
     List<ResolvedFeature> features = Collections.emptyList();
 
+    Set<ConfigFeatureBranch> branches = Collections.emptySet();
     private boolean provided;
 
     void add(SpecFeatures specFeatures) {
@@ -46,11 +48,12 @@ class CapabilityProviders {
         feature.addCapabilityProviders(this);
     }
 
-    void provided() {
+    void provided(ConfigFeatureBranch branch) {
+        branches = PmCollections.add(branches, branch);
         provided = true;
     }
 
     boolean isProvided() {
-        return provided;
+        return !branches.isEmpty() || provided;
     }
 }

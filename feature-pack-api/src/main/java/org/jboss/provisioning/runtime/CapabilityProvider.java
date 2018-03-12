@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 Red Hat, Inc. and/or its affiliates
+ * Copyright 2016-2018 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,12 +34,12 @@ abstract class CapabilityProvider {
         capProviders = PmCollections.add(capProviders, providers);
     }
 
-    void provided() {
+    void provided(ConfigFeatureBranch branch) {
         if(capProviders.isEmpty()) {
             return;
         }
         for(CapabilityProviders providers : capProviders) {
-            providers.provided();
+            providers.provided(branch);
         }
     }
 }

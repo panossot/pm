@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 Red Hat, Inc. and/or its affiliates
+ * Copyright 2016-2018 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,7 +37,7 @@ public class FeatureSpec extends PackageDepsSpec {
     public static class Builder extends PackageDepsSpecBuilder<Builder> {
 
         private String name;
-        private List<FeatureAnnotation> annotations = Collections.emptyList();
+        private Map<String, FeatureAnnotation> annotations = Collections.emptyMap();
         private Map<FeatureId, FeatureDependencySpec> featureDeps = Collections.emptyMap();
         private Map<String, FeatureReferenceSpec> refs = Collections.emptyMap();
         private Map<String, FeatureParameterSpec> params = Collections.emptyMap();
@@ -58,7 +58,7 @@ public class FeatureSpec extends PackageDepsSpec {
         }
 
         public Builder addAnnotation(FeatureAnnotation annotation) {
-            annotations = PmCollections.add(annotations, annotation);
+            annotations = PmCollections.putLinked(annotations, annotation.getName(), annotation);
             return this;
         }
 
@@ -129,7 +129,7 @@ public class FeatureSpec extends PackageDepsSpec {
     }
 
     final String name;
-    final List<FeatureAnnotation> annotations;
+    final Map<String, FeatureAnnotation> annotations;
     final Map<FeatureId, FeatureDependencySpec> featureDeps;
     final Map<String, FeatureReferenceSpec> featureRefs;
     final Map<String, FeatureParameterSpec> params;
@@ -157,8 +157,16 @@ public class FeatureSpec extends PackageDepsSpec {
         return !annotations.isEmpty();
     }
 
-    public List<FeatureAnnotation> getAnnotations() {
-        return annotations;
+    public Collection<FeatureAnnotation> getAnnotations() {
+        return annotations.values();
+    }
+
+    public boolean hasAnnotation(String name) {
+        return annotations.containsKey(name);
+    }
+
+    public FeatureAnnotation getAnnotation(String name) {
+        return annotations.get(name);
     }
 
     public boolean hasId() {

@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.StringTokenizer;
 
+import org.jboss.provisioning.ProvisioningDescriptionException;
 import org.jboss.provisioning.util.PmCollections;
 
 /**
@@ -30,6 +31,27 @@ import org.jboss.provisioning.util.PmCollections;
  * @author Alexey Loubyansky
  */
 public class FeatureAnnotation {
+
+    // BUILT-IN ANNOTATIONS
+    public static final String NEW_FEATURE_BRANCH = "new-feature-branch";
+
+    public static final String ELEM_NEW_FEATURE_BRANCH_TYPE = "type";
+    public static final String ELEM_NEW_FEATURE_BRANCH_TYPE_PARENT_CHILDREN = "parent-children";
+
+    public static final String ELEM_NEW_FEATURE_BRANCH_BATCH = "batch";
+
+    public static FeatureAnnotation parentChildrenBranch() {
+        return parentChildrenBranch(true);
+    }
+
+    public static FeatureAnnotation parentChildrenBranch(boolean batch) {
+            final FeatureAnnotation parentChildrenBranch = new FeatureAnnotation(NEW_FEATURE_BRANCH)
+                    .setElement(ELEM_NEW_FEATURE_BRANCH_TYPE, ELEM_NEW_FEATURE_BRANCH_TYPE_PARENT_CHILDREN);
+        if(batch) {
+            parentChildrenBranch.setElement(ELEM_NEW_FEATURE_BRANCH_BATCH, "true");
+        }
+        return parentChildrenBranch;
+    }
 
     final String name;
     private Map<String, String> elems = Collections.emptyMap();
@@ -65,6 +87,28 @@ public class FeatureAnnotation {
 
     public String getElement(String name, String defaultValue) {
         return elems.getOrDefault(name, defaultValue);
+    }
+
+    public boolean hasElementSet(String elem, String value, boolean requiredElement) throws ProvisioningDescriptionException {
+        final String actual = elems.get(elem);
+        if(actual == null) {
+            if(requiredElement) {
+                throw new ProvisioningDescriptionException("Annotation " + name + " is missing required element " + elem);
+            }
+            return false;
+        }
+        if(!actual.equals(value)) {
+            throw new ProvisioningDescriptionException("Annotation " + name + " includes unexpected value '" + actual + "' for element " + elem);
+        }
+        return true;
+    }
+
+    public boolean getElementAsBoolean(String name) {
+        final String value = elems.get(name);
+        if(value == null) {
+            return false;
+        }
+        return Boolean.parseBoolean(value);
     }
 
     public List<String> getElementAsList(String name) {
