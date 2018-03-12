@@ -34,6 +34,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.jboss.dmr.ModelNode;
+import org.jboss.provisioning.ProvisioningDescriptionException;
+import org.jboss.provisioning.spec.FeatureSpec;
 
 /**
  *
@@ -73,6 +76,32 @@ public class EmbeddedServerRunner {
             final Method test = cliTest.getMethod(methodName, Path.class, Path.class, Map.class, Properties.class);
             test.invoke(cliTest.newInstance(), wildfly, outputDir, inheritedFeatures, props);
         } catch (ClassNotFoundException | NoSuchMethodException | SecurityException | InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException ex) {
+            throw new MojoExecutionException(ex.getMessage(), ex);
+        } finally {
+            Thread.currentThread().setContextClassLoader(originalCl);
+        }
+    }
+
+    public static List<FeatureSpec> readStandaloneFeatures(Path wildfly, Map<String, String> inheritedFeatures) throws IOException, MojoExecutionException {
+        return execute(wildfly, inheritedFeatures, "readStandaloneFeatures");
+    }
+
+    public static List<FeatureSpec> readDomainFeatures(Path wildfly, Map<String, String> inheritedFeatures) throws IOException, MojoExecutionException {
+        return execute(wildfly, inheritedFeatures, "readDomainFeatures");
+    }
+
+    private static List<FeatureSpec> execute(Path wildfly, Map<String, String> inheritedFeatures, String methodName) throws IOException, MojoExecutionException {
+        final ClassLoader originalCl = Thread.currentThread().getContextClassLoader();
+        Properties props = System.getProperties();
+        try (URLClassLoader newCl = prepareClassLoader(wildfly, originalCl)) {
+            Thread.currentThread().setContextClassLoader(newCl);
+            resetProperties(wildfly);
+            final Class<?> cliTest = newCl.loadClass("org.jboss.provisioning.wildfly.build.EmbeddedScriptRunner");
+            final Method test = cliTest.getMethod(methodName, Path.class, Properties.class);
+            Object result = test.invoke(cliTest.newInstance(), wildfly, props); //should be a ModelNode
+            ModelNode model = ModelNode.fromString(result.toString());
+            return FeatureSpecExporter.readFeatureSpecs(model, inheritedFeatures);
+        } catch (ClassNotFoundException | NoSuchMethodException | SecurityException | InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException | ProvisioningDescriptionException ex) {
             throw new MojoExecutionException(ex.getMessage(), ex);
         } finally {
             Thread.currentThread().setContextClassLoader(originalCl);
@@ -127,5 +156,8 @@ public class EmbeddedServerRunner {
         System.setProperty(SYSPROP_KEY_JBOSS_DOMAIN_DEPLOYMENT_DIR, jbossBaseDir.resolve("data").resolve("content").toString());
         System.setProperty(SYSPROP_KEY_JBOSS_DOMAIN_TEMP_DIR, jbossBaseDir.resolve("data").resolve("tmp").toString());
         System.setProperty(SYSPROP_KEY_JBOSS_DOMAIN_LOG_DIR, jbossBaseDir.resolve("log").toString());
+    }
+
+    private EmbeddedServerRunner() {
     }
 }

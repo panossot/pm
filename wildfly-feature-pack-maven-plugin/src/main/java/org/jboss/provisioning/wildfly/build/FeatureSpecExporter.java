@@ -41,26 +41,35 @@ import org.jboss.provisioning.xml.FeatureSpecXmlWriter;
 public class FeatureSpecExporter {
 
     public static void export(ModelNode node, Path directory, Map<String, String> inheritedFeatures) throws IOException, ProvisioningDescriptionException, XMLStreamException {
-            List<FeatureSpec> specs = new ArrayList<>();
-            ModelNode rootNode;
-            if(node.hasDefined("result")) {
-                rootNode = node.require("result").require("feature");
-            } else {
-                rootNode = node.require("feature");
-            }
-            List<Property> rootFeatures;
-            if(rootNode.hasDefined("name")) {
-                rootFeatures = Collections.singletonList(new Property(rootNode.require("name").asString(), rootNode));
-            } else {
-                rootFeatures = rootNode.get("children").asPropertyList();
-            }
-            for (Property childFeature : rootFeatures) {
-                toFeatureSpec(childFeature, specs, inheritedFeatures, 0);
-            }
-            if(Files.notExists(directory)) {
-                Files.createDirectory(directory);
-            }
-            for (FeatureSpec spec : specs) {
+        List<FeatureSpec> specs = readFeatureSpecs(node, inheritedFeatures);
+        saveFeatureSpecs(directory, specs);
+    }
+
+    public static List<FeatureSpec> readFeatureSpecs(ModelNode node, Map<String, String> inheritedFeatures) throws ProvisioningDescriptionException {
+        List<FeatureSpec> specs = new ArrayList<>();
+        ModelNode rootNode;
+        if (node.hasDefined("result")) {
+            rootNode = node.require("result").require("feature");
+        } else {
+            rootNode = node.require("feature");
+        }
+        List<Property> rootFeatures;
+        if (rootNode.hasDefined("name")) {
+            rootFeatures = Collections.singletonList(new Property(rootNode.require("name").asString(), rootNode));
+        } else {
+            rootFeatures = rootNode.get("children").asPropertyList();
+        }
+        for (Property childFeature : rootFeatures) {
+            toFeatureSpec(childFeature, specs, inheritedFeatures, 0);
+        }
+        return specs;
+    }
+
+    public static void saveFeatureSpecs(Path directory, List<FeatureSpec> specs) throws ProvisioningDescriptionException, IOException, XMLStreamException {
+        if (Files.notExists(directory)) {
+            Files.createDirectory(directory);
+        }
+        for (FeatureSpec spec : specs) {
             Path specDir = directory.resolve(spec.getName());
             if (Files.notExists(specDir)) {
                 Files.createDirectory(specDir);
@@ -84,7 +93,7 @@ public class FeatureSpecExporter {
         }
         if (feature.hasDefined("requires")) {
             for (ModelNode capability : feature.require("requires").asList()) {
-                boolean optional = capability.hasDefined("optional") &&  capability.get("optional").asBoolean();
+                boolean optional = capability.hasDefined("optional") && capability.get("optional").asBoolean();
                 builder.requiresCapability(capability.get("name").asString(), optional);
             }
         }
@@ -96,38 +105,47 @@ public class FeatureSpecExporter {
         if (feature.hasDefined("params")) {
             for (ModelNode param : feature.require("params").asList()) {
                 FeatureParameterSpec.Builder featureParamSpecBuilder = FeatureParameterSpec.builder(param.get("name").asString());
-                if(param.hasDefined("feature-id") && param.get("feature-id").asBoolean()) {
+                if (param.hasDefined("feature-id") && param.get("feature-id").asBoolean()) {
                     featureParamSpecBuilder.setFeatureId();
                 }
-                if( param.hasDefined("nillable") && param.get("nillable").asBoolean()) {
+                if (param.hasDefined("nillable") && param.get("nillable").asBoolean()) {
                     featureParamSpecBuilder.setNillable();
                 }
                 featureParamSpecBuilder.setDefaultValue(param.hasDefined("default") ? convertToCli(param.get("default").asString()) : null);
-                if( param.hasDefined("type")) {
+                if (param.hasDefined("type")) {
                     featureParamSpecBuilder.setType(param.get("type").asString());
                 }
                 builder.addParam(featureParamSpecBuilder.build());
             }
         }
-        if(feature.hasDefined("refs")) {
-            for(ModelNode ref : feature.get("refs").asList()) {
+        if (feature.hasDefined("refs")) {
+            for (ModelNode ref : feature.get("refs").asList()) {
                 boolean isInclude = ref.hasDefined("include") && ref.get("include").asBoolean();
-                String featureName = ref.get("feature").asString();
-                FeatureReferenceSpec.Builder refBuilder = FeatureReferenceSpec.builder(featureName).setInclude(isInclude);
-                if(inheritedFeatures.containsKey(featureName)) {
-                    refBuilder.setOrigin(inheritedFeatures.get(featureName));
+                String featureRefName = ref.get("feature").asString();
+                FeatureReferenceSpec.Builder refBuilder = FeatureReferenceSpec.builder(featureRefName).setInclude(isInclude);
+                if (inheritedFeatures.containsKey(featureRefName)) {
+                    refBuilder.setOrigin(inheritedFeatures.get(featureRefName));
                 }
-                if(ref.hasDefined("mappings")) {
-                    for(Property mapping : ref.require("mappings").asPropertyList()) {
+                if (isProfileFeature(featureRefName)) {
+                    String mergedName = extractFeatureName(featureRefName);
+                    if (inheritedFeatures.containsKey(mergedName)) {
+                        refBuilder.setOrigin(inheritedFeatures.get(mergedName));
+                    }
+                }
+                if (ref.hasDefined("mappings")) {
+                    for (Property mapping : ref.require("mappings").asPropertyList()) {
                         refBuilder.mapParam(mapping.getName(), mapping.getValue().asString());
                     }
+                }
+                if ("profile".equals(featureRefName)) {
+                    refBuilder.setNillable(true);
                 }
                 builder.addFeatureRef(refBuilder.build());
             }
         }
-        if(feature.hasDefined("packages")) {
-            for(ModelNode packageDep : feature.get("packages").asList()) {
-                if(packageDep.hasDefined("package")){
+        if (feature.hasDefined("packages")) {
+            for (ModelNode packageDep : feature.get("packages").asList()) {
+                if (packageDep.hasDefined("package")) {
                     builder.addPackageDep(packageDep.require("package").asString());
                 }
             }
@@ -140,13 +158,23 @@ public class FeatureSpecExporter {
         }
     }
 
+    private static boolean isProfileFeature(String featureName) {
+        return featureName.startsWith("profile.");
+    }
+
+    private static String extractFeatureName(String featureName) {
+        if (isProfileFeature(featureName)) {
+            return featureName.substring("profile.".length());
+        }
+        return featureName;
+    }
     private static String convertToCli(String value) {
-        if(value!= null
+        if (value != null
                 && !value.isEmpty()
-                && value.indexOf(',') >=0
+                && value.indexOf(',') >= 0
                 && !(value.startsWith("\"") && value.endsWith("\""))
                 && !(value.startsWith("[") && value.endsWith("]"))) {
-            return '\"' + value +'\"';
+            return '\"' + value + '\"';
         }
         return value;
     }

@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Set;
 
 import org.jboss.provisioning.config.ConfigModel;
+import org.jboss.provisioning.spec.CapabilitySpec;
 import org.jboss.provisioning.util.PmCollections;
 
 /**
@@ -65,6 +66,10 @@ public class WildFlyFeaturePackBuild {
 
         public WildFlyFeaturePackBuild build() {
             return new WildFlyFeaturePackBuild(this);
+        }
+
+        void providesCapability(CapabilitySpec cap) {
+            throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
         }
     }
 

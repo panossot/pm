@@ -16,6 +16,8 @@
  */
 package org.jboss.provisioning.wildfly.build;
 
+import static org.jboss.provisioning.Constants.PM_UNDEFINED;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
@@ -29,8 +31,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Map.Entry;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.xml.stream.XMLStreamException;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.model.Dependency;
@@ -59,6 +63,15 @@ import org.codehaus.plexus.archiver.manager.ArchiverManager;
 import org.codehaus.plexus.archiver.manager.NoSuchArchiverException;
 import org.codehaus.plexus.components.io.fileselectors.IncludeExcludeFileSelector;
 import org.codehaus.plexus.util.StringUtils;
+import org.jboss.provisioning.ProvisioningDescriptionException;
+import org.jboss.provisioning.ProvisioningException;
+import org.jboss.provisioning.spec.CapabilitySpec;
+import org.jboss.provisioning.spec.FeatureAnnotation;
+import org.jboss.provisioning.spec.FeatureDependencySpec;
+import org.jboss.provisioning.spec.FeatureParameterSpec;
+import org.jboss.provisioning.spec.FeatureReferenceSpec;
+import org.jboss.provisioning.spec.FeatureSpec;
+import org.jboss.provisioning.spec.PackageDependencySpec;
 import org.jboss.provisioning.util.IoUtils;
 
 /**
@@ -67,6 +80,14 @@ import org.jboss.provisioning.util.IoUtils;
  */
 @Mojo(name = "wf-spec", requiresDependencyResolution = ResolutionScope.RUNTIME, defaultPhase = LifecyclePhase.GENERATE_RESOURCES)
 public class WfFeatureSpecBuildMojo extends AbstractMojo {
+    // Feature annotation names and elements
+    private static final String ADDR_PARAMS = "addr-params";
+    private static final String ADDR_PARAMS_MAPPING = "addr-params-mapping";
+    private static final String OP_PARAMS = "op-params";
+    private static final String OP_PARAMS_MAPPING = "op-params-mapping";
+    private static final String EXTENSION = "extension";
+    private static final String HOST_PREFIX = "host.";
+    private static final String PROFILE_PREFIX = "profile.";
 
     private static final String MODULES = "modules";
 
@@ -106,6 +127,7 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         Path tmpModules = null;
+        Properties props = new Properties();
         try {
             tmpModules = Files.createTempDirectory(MODULES);
             doExecute(tmpModules);
@@ -114,6 +136,7 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
         } catch (IOException | MavenFilteringException ex) {
             throw new MojoExecutionException(ex.getMessage(), ex);
         } finally {
+            clearXMLConfiguration(props);
             IoUtils.recursiveDelete(tmpModules);
         }
     }
@@ -221,7 +244,8 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
         Files.write(wildfly.resolve("standalone").resolve("configuration").resolve("standalone.xml"), lines);
         System.setProperty("org.wildfly.logging.skipLogManagerCheck", "true");
         System.setProperty("java.util.logging.manager", "org.jboss.logmanager.LogManager");
-        EmbeddedServerRunner.exportStandaloneFeatures(wildfly, outputDirectory.toPath(), inheritedFeatures);
+        List<FeatureSpec> standaloneFeatureSpecs = EmbeddedServerRunner.readStandaloneFeatures(wildfly, inheritedFeatures);
+
         lines = new ArrayList<>(domainExtensions.size() + 8);
         lines.add("<?xml version='1.0' encoding='UTF-8'?>");
         lines.add("<domain xmlns=\"urn:jboss:domain:6.0\">");
@@ -247,11 +271,196 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
         lines.add("</domain-controller>");
         lines.add("</host>");
         Files.write(wildfly.resolve("domain").resolve("configuration").resolve("host.xml"), lines);
-        EmbeddedServerRunner.exportDomainFeatures(wildfly, outputDirectory.toPath(), inheritedFeatures);
-        for (String inheritedFeature : inheritedFeatures.keySet()) {
-            IoUtils.recursiveDelete(outputDirectory.toPath().resolve(inheritedFeature));
+        System.setProperty("org.wildfly.logging.skipLogManagerCheck", "true");
+        System.setProperty("java.util.logging.manager", "org.jboss.logmanager.LogManager");
+        List<FeatureSpec> domainFeatureSpecs = EmbeddedServerRunner.readDomainFeatures(wildfly, inheritedFeatures);
+        Map<String, FeatureSpec> domainFPs = new HashMap<>(domainFeatureSpecs.size());
+        Map<String, FeatureSpec> hostFPs = new HashMap<>(domainFeatureSpecs.size());
+        for (FeatureSpec spec : domainFeatureSpecs) {
+            if (spec.getName().startsWith("host.subsystem")) {
+                hostFPs.put(spec.getName().substring(HOST_PREFIX.length()), spec);
+            }
         }
+        for (FeatureSpec spec : domainFeatureSpecs) {
+            String simplifiedSpecName = spec.getName().startsWith(PROFILE_PREFIX) ? spec.getName().substring(PROFILE_PREFIX.length()) : spec.getName();
+            domainFPs.put(simplifiedSpecName, spec);
+        }
+        try {
+            List<FeatureSpec> resultingSpecs = new ArrayList<>();
+            for (FeatureSpec spec : standaloneFeatureSpecs) {
+                String specName = spec.getName();
+                if (domainFPs.containsKey(specName)) {
+                    FeatureSpec domainSpec = domainFPs.get(specName);
+                    domainFPs.remove(specName);
+                    getLog().debug("############ Comparing " + specName + " with " + domainSpec.getName());
+                    if (FeatureSpecFilter.areIdentical(spec, domainSpec, getLog())) {
+                        getLog().debug("-------------" + specName + " and " + domainSpec.getName() + " are IDENTICAL");
+                    } else {
+                        getLog().warn(specName + " and " + domainSpec.getName() + " are DIFFERENT");
+                    }
+                    FeatureSpec hostSpec = hostFPs.get(specName);
+                    boolean mergeHost = false;
+                    String origin = null;
+                    if (hostSpec != null) {
+                        getLog().debug("############ Comparing " + specName + " with " + hostSpec.getName());
+                        if (FeatureSpecFilter.areIdentical(spec, hostSpec, getLog())) {
+                            getLog().debug("-------------" + specName + " and " + hostSpec.getName() + " are IDENTICAL");
+                            mergeHost = true;
+                            domainFPs.remove(hostSpec.getName());
+                        } else {
+                            getLog().warn(specName + " and " + hostSpec.getName() + " are DIFFERENT");
+                        }
+                        try {
+                            origin = hostSpec.getFeatureRef("host").getOrigin();
+                        } catch (ProvisioningDescriptionException ex) {
+                            origin = null;
+                        }
+                    }
+                    resultingSpecs.add(mergeFeatureSpecs(spec, domainSpec, mergeHost, origin));
+                } else {
+                    getLog().warn("******** No domain spec found for " + specName);
+                    resultingSpecs.add(spec);
+                }
+            }
+            if(domainFPs.containsKey("host.extension")) {
+                domainFPs.put("host.extension", updateHostExtension(domainFPs.get("host.extension")));
+            }
+            resultingSpecs.addAll(domainFPs.values());
+            FeatureSpecExporter.saveFeatureSpecs(outputDirectory.toPath(), resultingSpecs);
+            for (String inheritedFeature : inheritedFeatures.keySet()) {
+                IoUtils.recursiveDelete(outputDirectory.toPath().resolve(inheritedFeature));
+            }
+        } catch (ProvisioningException | XMLStreamException ex) {
+            throw new MojoExecutionException(ex.getMessage(), ex);
+        }
+
         IoUtils.recursiveDelete(wildfly);
+    }
+    private FeatureSpec updateHostExtension(FeatureSpec hostExtensionSpec) throws ProvisioningDescriptionException {
+        FeatureSpec.Builder builder = FeatureSpec.builder(hostExtensionSpec.getName());
+        for (FeatureAnnotation annotation : hostExtensionSpec.getAnnotations()) {
+            builder.addAnnotation(annotation);
+        }
+        for (CapabilitySpec cap : hostExtensionSpec.getProvidedCapabilities()) {
+            builder.providesCapability(cap);
+        }
+        for (CapabilitySpec cap : hostExtensionSpec.getRequiredCapabilities()) {
+            builder.requiresCapability(cap);
+        }
+        for (FeatureDependencySpec dep : hostExtensionSpec.getFeatureDeps()) {
+            builder.addFeatureDep(dep);
+        }
+        for (FeatureReferenceSpec ref : hostExtensionSpec.getFeatureRefs()) {
+             if ("host".equals(ref.getName())) {
+                FeatureReferenceSpec.Builder refBuilder = FeatureReferenceSpec.builder(ref.getName());
+                refBuilder.setName(ref.getName());
+                refBuilder.setInclude(ref.isInclude());
+                refBuilder.setNillable(true);
+                refBuilder.setOrigin(ref.getOrigin());
+                if (ref.hasMappedParams()) {
+                    for (Entry<String, String> mappedParam : ref.getMappedParams().entrySet()) {
+                        refBuilder.mapParam(mappedParam.getKey(), mappedParam.getValue());
+                    }
+                }
+                builder.addFeatureRef(refBuilder.build());
+            } else {
+                    builder.addFeatureRef(ref);
+            }
+        }
+        for (FeatureParameterSpec param : hostExtensionSpec.getParams().values()) {
+            builder.addParam(param);
+        }
+        return builder.build();
+    }
+
+    private FeatureSpec mergeFeatureSpecs(FeatureSpec spec, FeatureSpec domainSpec, boolean withHost, String origin) throws ProvisioningDescriptionException {
+        FeatureSpec.Builder builder = FeatureSpec.builder(spec.getName());
+        for (FeatureAnnotation annotation : domainSpec.getAnnotations()) {
+            FeatureAnnotation mergedAnnotation;
+            if (withHost) {
+                mergedAnnotation = new FeatureAnnotation(annotation.getName());
+                for (Entry<String, String> elt : annotation.getElements().entrySet()) {
+                    switch (elt.getKey()) {
+                        case ADDR_PARAMS:
+                            mergedAnnotation.setElement(ADDR_PARAMS, "host," + elt.getValue());
+                            break;
+                        case ADDR_PARAMS_MAPPING:
+                            mergedAnnotation.setElement(ADDR_PARAMS_MAPPING, "host," + elt.getValue());
+                            break;
+                        default:
+                            mergedAnnotation.setElement(elt.getKey(), elt.getValue());
+                            break;
+                    }
+                }
+            } else {
+                mergedAnnotation = annotation;
+            }
+            builder.addAnnotation(mergedAnnotation);
+        }
+        for (CapabilitySpec cap : domainSpec.getProvidedCapabilities()) {
+            builder.providesCapability(cap);
+        }
+        for (CapabilitySpec cap : domainSpec.getRequiredCapabilities()) {
+            builder.requiresCapability(cap);
+        }
+        for (FeatureDependencySpec dep : domainSpec.getFeatureDeps()) {
+            builder.addFeatureDep(dep);
+        }
+        for (FeatureReferenceSpec ref : domainSpec.getFeatureRefs()) {
+            if (ref.getName().startsWith(PROFILE_PREFIX)) {
+                FeatureReferenceSpec.Builder refBuilder = FeatureReferenceSpec.builder(ref.getName().substring(PROFILE_PREFIX.length()));
+                refBuilder.setName(ref.getName().substring(PROFILE_PREFIX.length()));
+                refBuilder.setInclude(ref.isInclude());
+                refBuilder.setNillable(ref.isNillable());
+                refBuilder.setOrigin(ref.getOrigin());
+                if (ref.hasMappedParams()) {
+                    for (Entry<String, String> mappedParam : ref.getMappedParams().entrySet()) {
+                        refBuilder.mapParam(mappedParam.getKey(), mappedParam.getValue());
+                    }
+                }
+                builder.addFeatureRef(refBuilder.build());
+            } else if (ref.getName().startsWith(HOST_PREFIX)) {
+                FeatureReferenceSpec.Builder refBuilder = FeatureReferenceSpec.builder(ref.getName().substring(HOST_PREFIX.length()));
+                refBuilder.setName(ref.getName().substring(HOST_PREFIX.length()));
+                refBuilder.setInclude(ref.isInclude());
+                refBuilder.setNillable(ref.isNillable());
+                refBuilder.setOrigin(ref.getOrigin());
+                if (ref.hasMappedParams()) {
+                    for (Entry<String, String> mappedParam : ref.getMappedParams().entrySet()) {
+                        refBuilder.mapParam(mappedParam.getKey(), mappedParam.getValue());
+                    }
+                }
+                builder.addFeatureRef(refBuilder.build());
+            } else {
+                 if (withHost && EXTENSION.equals(ref.getName())) { //replacing extension with host extension
+                      FeatureReferenceSpec.Builder refBuilder = FeatureReferenceSpec.builder("host.extension");
+                    refBuilder.setName("host.extension");refBuilder.setInclude(ref.isInclude());
+                refBuilder.setNillable(ref.isNillable());
+                refBuilder.setOrigin(ref.getOrigin());
+                builder.addFeatureRef(refBuilder.build());
+                 } else {
+                    builder.addFeatureRef(ref);
+                 }
+            }
+        }
+        for(String packageOrigin : spec.getPackageOrigins()) {
+            for(PackageDependencySpec packageDep : spec.getExternalPackageDeps(packageOrigin)) {
+                builder.addPackageDep(packageOrigin, packageDep);
+            }
+        }
+        for (PackageDependencySpec packageDep : spec.getLocalPackageDeps()) {
+            builder.addPackageDep(packageDep);
+        }
+        if(withHost) {
+            builder.addFeatureRef(FeatureReferenceSpec.builder("host").setNillable(true).setOrigin(origin).build());
+        }
+        for (FeatureParameterSpec param : domainSpec.getParams().values()) {
+            builder.addParam(param);
+        }
+        if (withHost) {
+            builder.addParam(FeatureParameterSpec.create("host", true, false, PM_UNDEFINED));
+        }
+        return builder.build();
     }
 
     private void copyJbossModule(Path wildfly) throws IOException, MojoExecutionException {

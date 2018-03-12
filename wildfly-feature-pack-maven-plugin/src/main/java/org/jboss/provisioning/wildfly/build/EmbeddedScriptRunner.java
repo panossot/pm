@@ -79,6 +79,61 @@ public class EmbeddedScriptRunner {
         FeatureSpecExporter.export(result, outputDir, inheritedFeatures);
     }
 
+   public static ModelNode readStandaloneFeatures(Path wildfly, Properties props) throws IOException, ProvisioningException {
+        StandaloneServer server = EmbeddedProcessFactory.createStandaloneServer(wildfly.toAbsolutePath().toString(), null, null, new String[]{"--admin-only"});
+        try {
+            server.start();
+            try (ModelControllerClient client = server.getModelControllerClient()) {
+                return readFeatures(client);
+            } catch (XMLStreamException | ProvisioningDescriptionException ex) {
+                throw new ProvisioningException(ex.getMessage(), ex);
+            }
+        } catch (EmbeddedProcessStartException ex) {
+            throw new IOException(ex.getMessage(), ex);
+        } finally {
+            server.stop();
+            clearXMLConfiguration(props);
+        }
+    }
+
+   public static ModelNode readDomainFeatures(Path wildfly, Properties props) throws IOException, ProvisioningException {
+        HostController host = EmbeddedProcessFactory.createHostController(wildfly.toAbsolutePath().toString(), null, null, new String[]{"--admin-only"});
+        try {
+            host.start();
+            try (ModelControllerClient client = host.getModelControllerClient()) {
+                return readFeatures(client);
+            } catch (XMLStreamException | ProvisioningDescriptionException ex) {
+                throw new ProvisioningException(ex.getMessage(), ex);
+            }
+        } catch (EmbeddedProcessStartException ex) {
+            throw new IOException(ex.getMessage(), ex);
+        } finally {
+            host.stop();
+            clearXMLConfiguration(props);
+        }
+    }
+
+    private static ModelNode readFeatures(ModelControllerClient client) throws IOException, ProvisioningDescriptionException, XMLStreamException {
+        ModelNode address = new ModelNode().setEmptyList();
+        ModelNode op = Operations.createOperation("read-feature", address);
+        op.get("recursive").set(true);
+        ModelNode result = client.execute(op);
+        checkOutcome(result);
+        if (result.hasDefined("result")) {
+            return result.require("result");
+        }
+        return result;
+    }
+
+    private static void checkOutcome(final ModelNode result) throws ProvisioningDescriptionException {
+        if (!result.get("outcome").asString().equals("success")) {
+            if (result.hasDefined("failure-description")) {
+                throw new ProvisioningDescriptionException(result.get("failure-description").asString());
+            }
+            throw new ProvisioningDescriptionException("Error executing operation " + result.asString());
+        }
+    }
+
     private static void clearXMLConfiguration(Properties props) {
         clearProperty(props, "javax.xml.parsers.DocumentBuilderFactory");
         clearProperty(props, "javax.xml.parsers.SAXParserFactory");
