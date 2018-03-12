@@ -37,7 +37,8 @@ class ConfigFeatureBranch {
     private boolean batch;
     private Set<ConfigFeatureBranch> deps = Collections.emptySet();
     private boolean ordered;
-    private boolean isFkBranch;
+    private boolean fkBranch;
+    private ResolvedSpecId specId;
 
     ConfigFeatureBranch(int index, boolean batch) {
         this.id = index;
@@ -56,26 +57,33 @@ class ConfigFeatureBranch {
         return batch;
     }
 
-    void setBatch() throws ProvisioningException {
+    void setBatch(boolean batch) throws ProvisioningException {
         if(!list.isEmpty()) {
             throw new ProvisioningException("Can't start batch in middle of the branch");
         }
-        batch = true;
-    }
-
-    void endBatch() {
-        list.get(list.size() - 1).endBatch();
+        this.batch = batch;
     }
 
     void setFkBranch() throws ProvisioningException {
         if(!list.isEmpty()) {
             throw new ProvisioningException("Can't start a foreign key branch in middle of the branch");
         }
-        isFkBranch = true;
+        fkBranch = true;
     }
 
     boolean isFkBranch() {
-        return isFkBranch;
+        return fkBranch;
+    }
+
+    void setSpecId(ResolvedSpecId specId) throws ProvisioningException {
+        if(!list.isEmpty()) {
+            throw new ProvisioningException("Can't start a spec branch in middle of the branch");
+        }
+        this.specId = specId;
+    }
+
+    ResolvedSpecId getSpecId() {
+        return specId;
     }
 
     boolean hasDeps() {
@@ -91,6 +99,7 @@ class ConfigFeatureBranch {
     }
 
     void add(ResolvedFeature feature) {
+        feature.branch = this;
         //System.out.println("ConfiguredFeatureBranch.add " + this + " " + feature.id + " " + feature.branchDeps);
         list.add(feature);
         if(feature.branchDeps.isEmpty() ||
@@ -119,12 +128,13 @@ class ConfigFeatureBranch {
         if(!list.isEmpty()) {
             ResolvedFeature feature = list.get(0);
             feature.startBranch();
-            if(batch) {
+            final int size = list.size();
+            if(batch && size > 1) {
                 feature.startBatch();
             }
             feature = list.get(list.size() - 1);
             feature.endBranch();
-            if(batch) {
+            if(batch && size > 1) {
                 feature.endBatch();
             }
         }

@@ -33,24 +33,27 @@ import org.jboss.provisioning.util.PmCollections;
 public class FeatureAnnotation {
 
     // BUILT-IN ANNOTATIONS
-    public static final String NEW_FEATURE_BRANCH = "new-feature-branch";
+    public static final String FEATURE_BRANCH = "feature-branch";
 
-    public static final String ELEM_NEW_FEATURE_BRANCH_TYPE = "type";
-    public static final String ELEM_NEW_FEATURE_BRANCH_TYPE_PARENT_CHILDREN = "parent-children";
+    public static final String FEATURE_BRANCH_PARENT_CHILDREN = "parent-children";
+    public static final String FEATURE_BRANCH_SPEC = "spec";
 
-    public static final String ELEM_NEW_FEATURE_BRANCH_BATCH = "batch";
+    public static final String FEATURE_BRANCH_BATCH = "batch";
 
     public static FeatureAnnotation parentChildrenBranch() {
-        return parentChildrenBranch(true);
+        return new FeatureAnnotation(FEATURE_BRANCH).setElement(FEATURE_BRANCH_PARENT_CHILDREN);
     }
 
     public static FeatureAnnotation parentChildrenBranch(boolean batch) {
-            final FeatureAnnotation parentChildrenBranch = new FeatureAnnotation(NEW_FEATURE_BRANCH)
-                    .setElement(ELEM_NEW_FEATURE_BRANCH_TYPE, ELEM_NEW_FEATURE_BRANCH_TYPE_PARENT_CHILDREN);
-        if(batch) {
-            parentChildrenBranch.setElement(ELEM_NEW_FEATURE_BRANCH_BATCH, "true");
-        }
-        return parentChildrenBranch;
+        return parentChildrenBranch().setElement(FEATURE_BRANCH_BATCH, String.valueOf(batch));
+    }
+
+    public static FeatureAnnotation specBranch(boolean spec) {
+        return new FeatureAnnotation(FEATURE_BRANCH).setElement(FEATURE_BRANCH_SPEC, String.valueOf(spec));
+    }
+
+    public static FeatureAnnotation specBranch(boolean spec, boolean batch) {
+        return specBranch(spec).setElement(FEATURE_BRANCH_BATCH, String.valueOf(batch));
     }
 
     final String name;
@@ -62,6 +65,10 @@ public class FeatureAnnotation {
 
     public String getName() {
         return name;
+    }
+
+    public FeatureAnnotation setElement(String name) {
+        return setElement(name, null);
     }
 
     public FeatureAnnotation setElement(String name, String value) {
@@ -89,26 +96,15 @@ public class FeatureAnnotation {
         return elems.getOrDefault(name, defaultValue);
     }
 
-    public boolean hasElementSet(String elem, String value, boolean requiredElement) throws ProvisioningDescriptionException {
-        final String actual = elems.get(elem);
-        if(actual == null) {
-            if(requiredElement) {
+    public String getElement(String elem, boolean required) throws ProvisioningDescriptionException {
+        final String value = elems.get(elem);
+        if(value == null) {
+            if(required) {
                 throw new ProvisioningDescriptionException("Annotation " + name + " is missing required element " + elem);
             }
-            return false;
+            return null;
         }
-        if(!actual.equals(value)) {
-            throw new ProvisioningDescriptionException("Annotation " + name + " includes unexpected value '" + actual + "' for element " + elem);
-        }
-        return true;
-    }
-
-    public boolean getElementAsBoolean(String name) {
-        final String value = elems.get(name);
-        if(value == null) {
-            return false;
-        }
-        return Boolean.parseBoolean(value);
+        return value;
     }
 
     public List<String> getElementAsList(String name) {
