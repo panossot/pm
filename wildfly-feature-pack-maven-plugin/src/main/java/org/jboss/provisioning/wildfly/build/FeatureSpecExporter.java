@@ -71,8 +71,11 @@ public class FeatureSpecExporter {
 
     private static void toFeatureSpec(Property featureProperty, List<FeatureSpec> specs, Map<String, String> inheritedFeatures, int level) throws ProvisioningDescriptionException {
         ModelNode feature = featureProperty.getValue();
-        FeatureSpec.Builder builder = FeatureSpec.builder(featureProperty.getName());
-        if(level == 1 && featureProperty.getName().contains("subsystem.")) {
+        final String specName = featureProperty.getName();
+        FeatureSpec.Builder builder = FeatureSpec.builder(specName);
+        if(level == 1 && (
+                specName.contains("subsystem.") ||
+                specName.contains("core-service."))) {
             builder.addAnnotation(FeatureAnnotation.parentChildrenBranch());
         }
         final FeatureAnnotation annotation = toFeatureAnnotation(feature);
