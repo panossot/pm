@@ -17,11 +17,6 @@
 
 package org.jboss.provisioning.runtime;
 
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -124,7 +119,7 @@ class DefaultBranchedConfigArranger {
         for(SpecFeatures features : specFeatures.values()) {
             orderFeaturesInSpec(features, false);
         }
-
+/*
         final Path file = Paths.get(System.getProperty("user.home")).resolve("pm-scripts").resolve("feature-branches.txt");
         try {
             Files.createDirectories(file.getParent());
@@ -150,6 +145,7 @@ class DefaultBranchedConfigArranger {
         } catch (IOException e) {
             e.printStackTrace();
         }
+        */
     }
 
     private CapabilityProviders getProviders(String cap, boolean add) throws ProvisioningException {
