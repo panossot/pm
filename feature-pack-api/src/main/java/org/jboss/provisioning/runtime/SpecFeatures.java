@@ -57,6 +57,7 @@ class SpecFeatures {
             throw new ProvisioningException("The branch has already been set for " + spec.id);
         }
         this.branch = branch;
+        branch.setSpecId(spec.id);
     }
 
     public ConfigFeatureBranch getBranch() {

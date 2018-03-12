@@ -54,9 +54,9 @@ public class ResolvedFeatureSpec extends CapabilityProvider {
     private Map<String, ResolvedFeatureSpec> resolvedRefTargets;
     private Map<ResolvedFeatureId, FeatureDependencySpec> resolvedDeps;
 
-    final boolean startNewBranch;
     final boolean parentChildrenBranch;
-    final boolean batchBranch;
+    private final Boolean branchBatch;
+    private final Boolean specBranch;
 
     public ResolvedFeatureSpec(ResolvedSpecId specId, ParameterTypeProvider typeProvider, FeatureSpec spec) throws ProvisioningException {
         this.id = specId;
@@ -69,16 +69,40 @@ public class ResolvedFeatureSpec extends CapabilityProvider {
             }
         }
 
-        final FeatureAnnotation newFb = xmlSpec.getAnnotation(FeatureAnnotation.NEW_FEATURE_BRANCH);
+        final FeatureAnnotation newFb = xmlSpec.getAnnotation(FeatureAnnotation.FEATURE_BRANCH);
         if(newFb != null) {
-            startNewBranch = true;
-            parentChildrenBranch = newFb.hasElementSet(FeatureAnnotation.ELEM_NEW_FEATURE_BRANCH_TYPE, FeatureAnnotation.ELEM_NEW_FEATURE_BRANCH_TYPE_PARENT_CHILDREN, false);
-            batchBranch = newFb.getElementAsBoolean(FeatureAnnotation.ELEM_NEW_FEATURE_BRANCH_BATCH);
+            parentChildrenBranch = newFb.hasElement(FeatureAnnotation.FEATURE_BRANCH_PARENT_CHILDREN);
+
+            Boolean specBranch = null;
+            String elem = newFb.getElement(FeatureAnnotation.FEATURE_BRANCH_SPEC);
+            if(elem != null) {
+                if(parentChildrenBranch) {
+                    throw new ProvisioningDescriptionException(specId + " can contain either " + FeatureAnnotation.FEATURE_BRANCH_PARENT_CHILDREN + " or " + FeatureAnnotation.FEATURE_BRANCH_SPEC +
+                            " element of " + FeatureAnnotation.FEATURE_BRANCH + " annotation");
+                }
+                specBranch = Boolean.parseBoolean(elem);
+            }
+            this.specBranch = specBranch;
+
+            elem = newFb.getElement(FeatureAnnotation.FEATURE_BRANCH_BATCH);
+            if(elem == null) {
+                branchBatch = null;
+            } else {
+                branchBatch = Boolean.parseBoolean(elem);
+            }
         } else {
-            startNewBranch = false;
             parentChildrenBranch = false;
-            batchBranch = false;
+            specBranch = null;
+            branchBatch = null;
         }
+    }
+
+    boolean isSpecBranch(boolean defaultValue) {
+        return specBranch == null ? defaultValue : specBranch;
+    }
+
+    boolean isBatchBranch(boolean defaultValue) {
+        return branchBatch == null ? defaultValue : branchBatch;
     }
 
     private ResolvedFeatureParam resolveParamSpec(FeatureParameterSpec paramSpec, ParameterTypeProvider typeProvider) throws ProvisioningException {

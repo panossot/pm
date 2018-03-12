@@ -28,6 +28,7 @@ import java.util.Set;
 import org.jboss.provisioning.Errors;
 import org.jboss.provisioning.ProvisioningDescriptionException;
 import org.jboss.provisioning.ProvisioningException;
+import org.jboss.provisioning.config.ConfigModel;
 import org.jboss.provisioning.spec.CapabilitySpec;
 import org.jboss.provisioning.util.PmCollections;
 
@@ -37,21 +38,28 @@ import org.jboss.provisioning.util.PmCollections;
  */
 class DefaultBranchedConfigArranger {
 
+    private static boolean getBooleanProp(Map<String, String> props, String name, boolean defaultValue) {
+        String value = props.get(name);
+        if(value == null) {
+            return defaultValue;
+        }
+        return Boolean.parseBoolean(value);
+    }
 
     private final ConfigModelStack configStack;
     private final Map<ResolvedSpecId, SpecFeatures> specFeatures;
     private final Map<ResolvedFeatureId, ResolvedFeature> features;
+    private final boolean branchPerSpec;
+    private boolean orderReferencedSpec;
+    private final boolean branchIsBatch;
 
     private CapabilityResolver capResolver = new CapabilityResolver();
     private Map<String, CapabilityProviders> capProviders = Collections.emptyMap();
-
-    private boolean orderReferencedSpec = true;
 
     private List<ConfigFeatureBranch> featureBranches = Collections.emptyList();
     private ConfigFeatureBranch currentBranch;
 
     private boolean onParentChildrenBranch;
-    private boolean arrangeBySpec = true;
     private boolean circularDeps;
 
 
@@ -59,6 +67,10 @@ class DefaultBranchedConfigArranger {
         this.configStack = configStack;
         this.specFeatures = configStack.specFeatures;
         this.features = configStack.features;
+
+        branchPerSpec = getBooleanProp(configStack.props, ConfigModel.BRANCH_PER_SPEC, true);
+        orderReferencedSpec = branchPerSpec;
+        branchIsBatch = getBooleanProp(configStack.props, ConfigModel.BRANCH_IS_BATCH, false);
     }
 
     List<ResolvedFeature> orderFeatures() throws ProvisioningException {
@@ -112,12 +124,18 @@ class DefaultBranchedConfigArranger {
             }
         }
 
-        currentBranch = new ConfigFeatureBranch(0, false);
+        currentBranch = new ConfigFeatureBranch(0, branchIsBatch);
         featureBranches = new ArrayList<>();
         featureBranches.add(currentBranch);
 
-        for(SpecFeatures features : specFeatures.values()) {
-            orderFeaturesInSpec(features, false);
+        if(branchPerSpec) {
+            for(SpecFeatures features : specFeatures.values()) {
+                orderFeaturesInSpec(features, false);
+            }
+        } else {
+            for(ResolvedFeature feature : features.values()) {
+                orderFeature(feature);
+            }
         }
 /*
         final Path file = Paths.get(System.getProperty("user.home")).resolve("pm-scripts").resolve("feature-branches.txt");
@@ -184,7 +202,7 @@ class DefaultBranchedConfigArranger {
         while(i < features.size() && allCircularRefs == null) {
             if (onParentChildrenBranch) {
                 onParentChildrenBranch = false;
-                startNewBranch(false);
+                startNewBranch(branchIsBatch);
             }
             allCircularRefs = orderFeature(features.get(i++));
 /*            if(circularRefs != null) {
@@ -302,7 +320,7 @@ class DefaultBranchedConfigArranger {
                     }
                 }
                 if(endBatch) {
-                    startNewBranch(false);
+                    startNewBranch(branchIsBatch);
                 }
                 circularDeps = originalCircularDeps;
             }
@@ -318,15 +336,10 @@ class DefaultBranchedConfigArranger {
         ConfigFeatureBranch branch = currentBranch;
         if(circularDeps) {
             // currentBranch
-        } else if(feature.spec.startNewBranch) {
-            branch = startNewBranch(false);
+        } else if(feature.spec.parentChildrenBranch) {
+            branch = startNewBranch(feature.spec.isBatchBranch(branchIsBatch));
             branch.setFkBranch();
-            if(feature.spec.parentChildrenBranch) {
-                onParentChildrenBranch = true;
-            }
-            if(feature.spec.batchBranch) {
-                branch.setBatch();
-            }
+            onParentChildrenBranch = true;
         } else {
             boolean branchReset = false;
             if (!feature.branchDeps.isEmpty()) {
@@ -355,29 +368,40 @@ class DefaultBranchedConfigArranger {
                 }
             }
 
-            if (!branchReset && arrangeBySpec) {
-                //System.out.println("arranging by spec " + feature.id);
-                final SpecFeatures spec = feature.getSpecFeatures();
-                if (!spec.isBranchSet()) {
-                    branch = startNewBranch(false);
-                    spec.setBranch(branch);
-                } else if (!createsDepCircle(spec.getBranch(), feature)) {
-                    branch = spec.getBranch();
-                    //System.out.println("  spec branch " + spec.getBranch());
+            if(!branchReset) {
+                if(feature.spec.isSpecBranch(branchPerSpec)) {
+                    final SpecFeatures spec = feature.getSpecFeatures();
+                    if (!spec.isBranchSet()) {
+                        branch = startNewBranch(feature.spec.isBatchBranch(branchIsBatch));
+                        spec.setBranch(branch);
+                    } else if (!createsDepCircle(spec.getBranch(), feature)) {
+                        branch = spec.getBranch();
+                    } else {
+                        branch = startNewBranch(branchIsBatch);
+                    }
+                } else {
+                    final ResolvedSpecId branchSpecId = branch.getSpecId();
+                    if(branchSpecId != null && !branchSpecId.equals(feature.spec.id)) {
+                        branch = startNewBranch(feature.spec.isBatchBranch(branchIsBatch));
+                    } else if(createsDepCircle(branch, feature)) {
+                        branch = startNewBranch(branchIsBatch);
+                    }
                 }
             }
         }
 
         branch.add(feature);
-        feature.branch = branch;
         feature.ordered();
-        if(!circularDeps && !feature.getSpecFeatures().isBranchSet()) {
-            feature.getSpecFeatures().setBranch(branch);
-        }
+//        if(!circularDeps && !feature.getSpecFeatures().isBranchSet()) {
+//            feature.getSpecFeatures().setBranch(branch);
+//        }
         //System.out.println(feature.getId().toString() + " landed on " + feature.branch);
     }
 
     private boolean createsDepCircle(ConfigFeatureBranch branch, ResolvedFeature feature) {
+        if(branch.isEmpty() || feature.branchDeps.isEmpty()) {
+            return false;
+        }
         //System.out.println("createDepCircle " + branch + " " + feature.branchDeps);
         Set<ConfigFeatureBranch> visitedBranches = null;
         for(ConfigFeatureBranch newDep : feature.branchDeps.keySet()) {
@@ -423,10 +447,8 @@ class DefaultBranchedConfigArranger {
             if(currentBranch.isBatch() == batch) {
                 return currentBranch;
             }
-            if(batch) {
-                currentBranch.setBatch();
-                return currentBranch;
-            }
+            currentBranch.setBatch(batch);
+            return currentBranch;
         }
         currentBranch = new ConfigFeatureBranch(featureBranches.size(), batch);
         featureBranches.add(currentBranch);

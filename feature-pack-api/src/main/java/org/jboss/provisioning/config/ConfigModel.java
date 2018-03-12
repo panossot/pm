@@ -32,6 +32,9 @@ import org.jboss.provisioning.util.StringUtils;
  */
 public class ConfigModel extends FeatureGroupSupport {
 
+    public static final String BRANCH_PER_SPEC = "config.branch-per-spec";
+    public static final String BRANCH_IS_BATCH = "config.branch-is-batch";
+
     public static class Builder extends FeatureGroupBuilderSupport<Builder> {
 
         private String model;

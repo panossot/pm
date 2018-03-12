@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 Red Hat, Inc. and/or its affiliates
+ * Copyright 2016-2018 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,6 +23,7 @@ import org.jboss.provisioning.ProvisioningDescriptionException;
 import org.jboss.provisioning.ProvisioningException;
 import org.jboss.provisioning.config.FeatureConfig;
 import org.jboss.provisioning.config.FeaturePackConfig;
+import org.jboss.provisioning.plugin.ProvisionedConfigHandler;
 import org.jboss.provisioning.config.ConfigModel;
 import org.jboss.provisioning.repomanager.FeaturePackRepositoryManager;
 import org.jboss.provisioning.runtime.ResolvedFeatureId;
@@ -31,6 +32,8 @@ import org.jboss.provisioning.spec.FeatureSpec;
 import org.jboss.provisioning.state.ProvisionedFeaturePack;
 import org.jboss.provisioning.state.ProvisionedState;
 import org.jboss.provisioning.test.PmInstallFeaturePackTestBase;
+import org.jboss.provisioning.test.util.TestConfigHandlersProvisioningPlugin;
+import org.jboss.provisioning.test.util.TestProvisionedConfigHandler;
 import org.jboss.provisioning.xml.ProvisionedConfigBuilder;
 import org.jboss.provisioning.xml.ProvisionedFeatureBuilder;
 
@@ -41,6 +44,34 @@ import org.jboss.provisioning.xml.ProvisionedFeatureBuilder;
 public class CircularCapabilityRequirementsTestCase extends PmInstallFeaturePackTestBase {
 
     private static final Gav FP_GAV = ArtifactCoords.newGav("org.jboss.pm.test", "fp1", "1.0.0.Final");
+
+    public static class ConfigHandler extends TestProvisionedConfigHandler {
+        @Override
+        protected boolean loggingEnabled() {
+            return false;
+        }
+        @Override
+        protected boolean branchesEnabled() {
+            return false;
+        }
+        @Override
+        protected String[] initEvents() {
+            return new String[] {
+                    batchStartEvent(),
+                    featurePackEvent(FP_GAV),
+                    specEvent("specB"),
+                    featureEvent(ResolvedFeatureId.create(FP_GAV, "specB", "p1", "b1")),
+                    specEvent("specA"),
+                    featureEvent(ResolvedFeatureId.create(FP_GAV, "specA", "p1", "a1")),
+                    batchEndEvent(),
+                    batchStartEvent(),
+                    featureEvent(ResolvedFeatureId.create(FP_GAV, "specA", "p1", "a2")),
+                    specEvent("specB"),
+                    featureEvent(ResolvedFeatureId.create(FP_GAV, "specB", "p1", "b2")),
+                    batchEndEvent()
+            };
+        }
+    }
 
     @Override
     protected void setupRepo(FeaturePackRepositoryManager repoManager) throws ProvisioningDescriptionException {
@@ -76,6 +107,8 @@ public class CircularCapabilityRequirementsTestCase extends PmInstallFeaturePack
                             .setParam("p1", "b2")
                             .setParam("p2", "a2"))
                     .build())
+            .addPlugin(TestConfigHandlersProvisioningPlugin.class)
+            .addService(ProvisionedConfigHandler.class, ConfigHandler.class)
             .getInstaller()
         .install();
     }

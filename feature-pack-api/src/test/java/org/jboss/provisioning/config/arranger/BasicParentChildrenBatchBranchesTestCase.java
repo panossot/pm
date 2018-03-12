@@ -103,7 +103,7 @@ public class BasicParentChildrenBatchBranchesTestCase extends PmInstallFeaturePa
         .newFeaturePack(FP1_GAV)
 
             .addSpec(FeatureSpec.builder("specA")
-                    .addAnnotation(FeatureAnnotation.parentChildrenBranch())
+                    .addAnnotation(FeatureAnnotation.parentChildrenBranch(true))
                     .addParam(FeatureParameterSpec.createId("a"))
                     .build())
             .addSpec(FeatureSpec.builder("specB")
