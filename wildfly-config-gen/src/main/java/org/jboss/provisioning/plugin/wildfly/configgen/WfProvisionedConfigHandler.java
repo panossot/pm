@@ -19,12 +19,11 @@ package org.jboss.provisioning.plugin.wildfly.configgen;
 
 import static org.jboss.provisioning.Constants.PM_UNDEFINED;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.StringTokenizer;
 
@@ -36,7 +35,6 @@ import org.jboss.as.controller.client.helpers.Operations;
 import org.jboss.dmr.ModelNode;
 import org.jboss.provisioning.ArtifactCoords;
 import org.jboss.provisioning.Constants;
-import org.jboss.provisioning.Errors;
 import org.jboss.provisioning.MessageWriter;
 import org.jboss.provisioning.ProvisioningDescriptionException;
 import org.jboss.provisioning.ProvisioningException;
@@ -47,8 +45,6 @@ import org.jboss.provisioning.runtime.ResolvedFeatureSpec;
 import org.jboss.provisioning.spec.FeatureAnnotation;
 import org.jboss.provisioning.state.ProvisionedConfig;
 import org.jboss.provisioning.state.ProvisionedFeature;
-import org.jboss.provisioning.util.IoUtils;
-import org.jboss.provisioning.util.PmCollections;
 
 /**
  *
@@ -59,13 +55,6 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
     private static final String DOMAIN = "domain";
     private static final String HOST = "host";
     private static final String STANDALONE = "standalone";
-
-    private static final String CONFIG_NAME = "config-name";
-    private static final String DOMAIN_CONFIG_NAME = "domain-config-name";
-    private static final String HOST_CONFIG_NAME = "host-config-name";
-
-    private static final String TMP_CONFIG = "pm-tmp-config_";
-    private static final String DOT_XML = ".xml";
 
     private static final int OP = 0;
     private static final int WRITE_ATTR = 1;
@@ -350,35 +339,23 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
         }
     }
 
-    private final ProvisioningRuntime runtime;
     private final MessageWriter messageWriter;
     private final WfConfigGenerator configGen;
 
     private List<ManagedOp> ops = new ArrayList<>();
     private NameFilter paramFilter;
 
-    private List<String> tmpConfigs = Collections.emptyList();
-
     private ModelNode composite;
 
     public WfProvisionedConfigHandler(ProvisioningRuntime runtime, WfConfigGenerator configGen) throws ProvisioningException {
-        this.runtime = runtime;
         this.messageWriter = runtime.getMessageWriter();
         this.configGen = configGen;
     }
 
     @Override
     public void prepare(ProvisionedConfig config) throws ProvisioningException {
-
-        final String logFile;
         if(STANDALONE.equals(config.getModel())) {
-            logFile = config.getProperties().get(CONFIG_NAME);
-            if(logFile == null) {
-                throw new ProvisioningException("Config " + config.getName() + " of model " + config.getModel() + " is missing property config-name");
-            }
-
-            configGen.startServer("--server-config=" + logFile, "--admin-only", "--internal-empty-config", "--internal-remove-config");
-
+            configGen.startServer(getEmbeddedArgs(config));
             paramFilter = new NameFilter() {
                 @Override
                 public boolean accepts(String name, int position) {
@@ -386,22 +363,8 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
                 }
             };
         } else if(DOMAIN.equals(config.getModel())) {
-            logFile = config.getProperties().get(DOMAIN_CONFIG_NAME);
-            if (logFile == null) {
-                throw new ProvisioningException("Config " + config.getName() + " of model " + config.getModel()
-                        + " is missing property domain-config-name");
-            }
-
-            String hostConfig = config.getProperties().get(HOST_CONFIG_NAME);
-            if(hostConfig == null) {
-                final String tmpConfig = TMP_CONFIG + tmpConfigs.size() + DOT_XML;
-                tmpConfigs = PmCollections.add(tmpConfigs, tmpConfig);
-                hostConfig = tmpConfig;
-            }
-
-            configGen.startHc("--domain-config=" + logFile, "--host-config=" + hostConfig, "--empty-domain-config", "--remove-existing-domain-config", "--empty-host-config", "--remove-existing-host-config");
+            configGen.startHc(getEmbeddedArgs(config));
             configGen.execute(Operations.createAddOperation(Operations.createAddress("host", "tmp")));
-
             paramFilter = new NameFilter() {
                 @Override
                 public boolean accepts(String name, int position) {
@@ -409,28 +372,7 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
                 }
             };
         } else if (HOST.equals(config.getModel())) {
-            logFile = config.getProperties().get(HOST_CONFIG_NAME);
-            if (logFile == null) {
-                throw new ProvisioningException("Config " + config.getName() + " of model " + config.getModel()
-                        + " is missing property host-config-name");
-            }
-
-            final List<String> args = new ArrayList<>();
-            args.add("--empty-host-config");
-            args.add("--remove-existing-host-config");
-            args.add("--host-config=" + logFile);
-            String domainConfig = config.getProperties().get(DOMAIN_CONFIG_NAME);
-            if (domainConfig == null) {
-                args.add("--empty-domain-config");
-                args.add("--remove-existing-domain-config");
-                args.add("--domain-config=" + TMP_CONFIG + tmpConfigs.size() + DOT_XML);
-                tmpConfigs = PmCollections.add(tmpConfigs, domainConfig);
-            } else {
-                args.add("--domain-config=" + domainConfig);
-            }
-
-            configGen.startHc(args.toArray(new String[args.size()]));
-
+            configGen.startHc(getEmbeddedArgs(config));
             paramFilter = new NameFilter() {
                 @Override
                 public boolean accepts(String name, int position) {
@@ -510,6 +452,19 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
         configGen.stopEmbedded();
     }
 
+    private String[] getEmbeddedArgs(ProvisionedConfig config) {
+        final List<String> embeddedArgs = new ArrayList<>(config.getProperties().size());
+        for(Map.Entry<String, String> prop : config.getProperties().entrySet()) {
+            if(prop.getKey().startsWith("--")) {
+                embeddedArgs.add(prop.getKey());
+                if(!prop.getValue().isEmpty()) {
+                    embeddedArgs.add(prop.getValue());
+                }
+            }
+        }
+        return embeddedArgs.toArray(new String[embeddedArgs.size()]);
+    }
+
     private void handleOp(ModelNode op) throws ProvisioningException {
         if(composite != null) {
             composite.get("steps").add(op);
@@ -532,21 +487,6 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
             toSet = handler.getResult();
         }
         op.get(name).set(toSet);
-    }
-
-    public void cleanup() {
-        if(tmpConfigs.isEmpty()) {
-            return;
-        }
-        final Path configDir = runtime.getStagedDir().resolve(DOMAIN).resolve("configuration");
-        for(String tmpConfig : tmpConfigs) {
-            final Path tmpPath = configDir.resolve(tmpConfig);
-            if(Files.exists(tmpPath)) {
-                IoUtils.recursiveDelete(tmpPath);
-            } else {
-                messageWriter.error(Errors.pathDoesNotExist(tmpPath));
-            }
-        }
     }
 
     private static Set<String> parseSet(String str) throws ProvisioningDescriptionException {

@@ -79,7 +79,6 @@ public class WfConfigGenerator {
                 }
                 config.handle(configHandler);
             }
-            configHandler.cleanup();
         } finally {
             if(embeddedProcess != null) {
                 stopEmbedded();
