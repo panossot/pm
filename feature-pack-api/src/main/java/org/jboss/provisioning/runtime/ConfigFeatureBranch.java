@@ -65,9 +65,9 @@ class ConfigFeatureBranch {
     }
 
     void setFkBranch() throws ProvisioningException {
-        if(!list.isEmpty()) {
-            throw new ProvisioningException("Can't start a foreign key branch in middle of the branch");
-        }
+        //if(!list.isEmpty()) {
+        //    throw new ProvisioningException("Can't start a foreign key branch in middle of the branch");
+        //}
         fkBranch = true;
     }
 
