@@ -307,10 +307,11 @@ class DefaultBranchedConfigArranger {
                 final boolean originalCircularDeps = circularDeps;
                 circularDeps = true;
 
-                boolean endBatch = false;
-                if(!currentBranch.isBatch()) {
+                // there could be multiple triggers for the same circle
+                // i.e. cap requirements, refs, etc, the same circle can be detected multiple times
+                // the check is necessary to avoid breaking it into pieces
+                if(!originalCircularDeps) {
                     startNewBranch(true);
-                    endBatch = true;
                 }
                 ordered(feature);
                 initiatedCircularRefs.sort(CircularRefInfo.getNextOnPathComparator());
@@ -319,7 +320,7 @@ class DefaultBranchedConfigArranger {
                         throw new IllegalStateException();
                     }
                 }
-                if(endBatch) {
+                if(!originalCircularDeps) {
                     startNewBranch(branchIsBatch);
                 }
                 circularDeps = originalCircularDeps;
@@ -335,7 +336,10 @@ class DefaultBranchedConfigArranger {
 
         ConfigFeatureBranch branch = currentBranch;
         if(circularDeps) {
-            // currentBranch
+            // stay on the current branch created for the circular dep
+            if(feature.spec.parentChildrenBranch) {
+                branch.setFkBranch();
+            }
         } else if(feature.spec.parentChildrenBranch) {
             branch = startNewBranch(feature.spec.isBatchBranch(branchIsBatch));
             branch.setFkBranch();
