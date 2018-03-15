@@ -16,7 +16,6 @@
  */
 package org.jboss.provisioning.plugin.wildfly;
 
-import org.jboss.provisioning.plugin.wildfly.server.CliScriptRunner;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -68,6 +67,7 @@ import org.jboss.provisioning.plugin.wildfly.config.CopyPath;
 import org.jboss.provisioning.plugin.wildfly.config.DeletePath;
 import org.jboss.provisioning.plugin.wildfly.config.FilePermission;
 import org.jboss.provisioning.plugin.wildfly.config.WildFlyPackageTasks;
+import org.jboss.provisioning.plugin.wildfly.server.CliScriptRunner;
 import org.jboss.provisioning.runtime.FeaturePackRuntime;
 import org.jboss.provisioning.runtime.PackageRuntime;
 import org.jboss.provisioning.runtime.ProvisioningRuntime;

@@ -54,18 +54,8 @@ public class FeatureParameterSpec {
             return this;
         }
 
-        public Builder setSimpleParam() {
-            this.featureId = false;
-            return this;
-        }
-
         public Builder setNillable() {
             this.nillable = true;
-            return this;
-        }
-
-        public Builder setNonNillable() {
-            this.nillable = false;
             return this;
         }
 
