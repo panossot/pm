@@ -17,44 +17,31 @@
 
 package org.jboss.provisioning.plugin.wildfly;
 
-import static org.jboss.provisioning.Constants.PM_UNDEFINED;
-import static org.jboss.provisioning.plugin.wildfly.WfConstants.ADDR_PARAMS;
-import static org.jboss.provisioning.plugin.wildfly.WfConstants.ADDR_PARAMS_MAPPING;
-import static org.jboss.provisioning.plugin.wildfly.WfConstants.OP_PARAMS;
-import static org.jboss.provisioning.plugin.wildfly.WfConstants.OP_PARAMS_MAPPING;
+
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.net.URLClassLoader;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.xml.stream.XMLStreamException;
-import org.jboss.dmr.ModelNode;
-import org.jboss.dmr.Property;
 import org.jboss.provisioning.ArtifactCoords.Gav;
 
 import org.jboss.provisioning.MessageWriter;
-import org.jboss.provisioning.ProvisioningDescriptionException;
 import org.jboss.provisioning.ProvisioningException;
 import org.jboss.provisioning.config.ConfigId;
 import org.jboss.provisioning.config.ConfigModel;
-import org.jboss.provisioning.config.FeatureConfig;
-import org.jboss.provisioning.config.FeaturePackConfig;
 import org.jboss.provisioning.diff.FileSystemDiff;
 import org.jboss.provisioning.plugin.DiffPlugin;
-import org.jboss.provisioning.runtime.FeaturePackRuntime;
+import org.jboss.provisioning.plugin.wildfly.server.ClassLoaderHelper;
 import org.jboss.provisioning.runtime.ProvisioningRuntime;
-import org.jboss.provisioning.runtime.ResolvedFeatureSpec;
-import org.jboss.provisioning.spec.FeatureAnnotation;
-import org.jboss.provisioning.spec.FeatureId;
-import org.jboss.provisioning.spec.FeatureParameterSpec;
-import org.jboss.provisioning.spec.FeatureSpec;
 import org.jboss.provisioning.util.PathFilter;
 import org.jboss.provisioning.xml.ConfigXmlWriter;
 
@@ -84,25 +71,24 @@ public class WfDiffPlugin implements DiffPlugin {
         final MessageWriter messageWriter = runtime.getMessageWriter();
         messageWriter.verbose("WildFly diff plug-in");
         FileSystemDiff diff = new FileSystemDiff(messageWriter, runtime.getInstallDir(), customizedInstallation);
-        String host = getParameter(runtime, "host", "127.0.0.1");
-        String port = getParameter(runtime, "port", "9990");
-        String protocol = getParameter(runtime, "protocol", "remote+http");
-        String username = getParameter(runtime, "username", "admin");
-        String password = getParameter(runtime, "password", "passw0rd!");
-        String serverConfig = getParameter(runtime, "server-config", "standalone.xml");
-        Server server = new Server(customizedInstallation.toAbsolutePath(), serverConfig, messageWriter);
-        EmbeddedServer embeddedServer = new EmbeddedServer(runtime.getInstallDir().toAbsolutePath(), messageWriter);
+        final ClassLoader originalCl = Thread.currentThread().getContextClassLoader();
+        URLClassLoader newCl = ClassLoaderHelper.prepareProvisioningClassLoader(runtime.getInstallDir(), originalCl);
+        Properties props = System.getProperties();
+        ConfigModel config;
+        Thread.currentThread().setContextClassLoader(newCl);
+        Map<Gav, ConfigId> includedConfigs = new HashMap<>();
         try {
-            Files.createDirectories(target);
-            server.startServer();
-            embeddedServer.execute(false,
-                    String.format(CONFIGURE_SYNC, host, port, protocol, username, password),
-                    String.format(EXPORT_DIFF, target.resolve("finalize.cli").toAbsolutePath()),
-                    String.format(EXPORT_FEATURE, target.resolve("feature_config.dmr").toAbsolutePath()));
-            ConfigModel.Builder configBuilder = ConfigModel.builder().setName("standalone.xml").setModel("standalone");
-            Map<Gav, ConfigId> includedConfigs = new HashMap<>();
-            createConfiguration(runtime, configBuilder, includedConfigs, target.resolve("feature_config.dmr").toAbsolutePath());
-            ConfigModel config = configBuilder.build();
+            final Class<?> wfDiffGenerator = newCl.loadClass("org.jboss.provisioning.plugin.wildfly.WfDiffConfigGenerator");
+            final Method exportDiff = wfDiffGenerator.getMethod("exportDiff", ProvisioningRuntime.class, Map.class, Path.class, Path.class);
+            config = (ConfigModel) exportDiff.invoke(null, runtime, includedConfigs, customizedInstallation, target);
+        } catch (ClassNotFoundException | NoSuchMethodException | SecurityException | IllegalAccessException | IllegalArgumentException | InvocationTargetException | NoClassDefFoundError ex) {
+            throw new ProvisioningException(ex.getMessage(), ex);
+        } finally {
+            Thread.currentThread().setContextClassLoader(originalCl);
+            System.setProperties(props);
+            ClassLoaderHelper.close(newCl);
+        }
+        try {
             ConfigXmlWriter.getInstance().write(config, target.resolve("config.xml"));
             WfDiffResult result = new WfDiffResult(
                     includedConfigs,
@@ -114,8 +100,6 @@ public class WfDiffPlugin implements DiffPlugin {
         } catch (IOException | XMLStreamException ex) {
             messageWriter.error(ex, "Couldn't compute the WildFly Model diff because of %s", ex.getMessage());
             Logger.getLogger(WfDiffPlugin.class.getName()).log(Level.SEVERE, null, ex);
-        } finally {
-            server.stopServer();
         }
     }
 
@@ -124,109 +108,5 @@ public class WfDiffPlugin implements DiffPlugin {
             return FILTER_FP;
         }
         return FILTER;
-    }
-
-    private void createConfiguration(ProvisioningRuntime runtime, ConfigModel.Builder builder,
-            Map<Gav, ConfigId> includedConfigBuilders, Path json)
-            throws IOException, XMLStreamException, ProvisioningDescriptionException {
-        try (InputStream in = Files.newInputStream(json)) {
-            ModelNode featureDiff = ModelNode.fromBase64(in);
-            for (ModelNode feature : featureDiff.asList()) {
-                String specName = feature.require("feature").require("spec").asString();
-                DependencySpec dependencySpec = getFeatureSpec(runtime, specName);
-                FeatureSpec resolvedSpec = dependencySpec.spec;
-                if (resolvedSpec != null && resolvedSpec.hasAnnotations()) {
-                    Map<String, String> address = new HashMap<>();
-                    for (Property elt : feature.require("feature").require("address").asPropertyList()) {
-                        address.put(elt.getName(), elt.getValue().asString());
-                    }
-                    FeatureConfig featureConfig = FeatureConfig.newConfig(specName).setOrigin(dependencySpec.fpName);
-                    final FeatureAnnotation firstAnnotation = resolvedSpec.getAnnotations().iterator().next();
-                    resolveAddressParams(featureConfig, address, firstAnnotation);
-                    Map<String, String> params = new HashMap<>();
-                    if (feature.require("feature").hasDefined("params")) {
-                        for (Property elt : feature.require("feature").require("params").asPropertyList()) {
-                            params.put(elt.getName(), elt.getValue().asString());
-                        }
-                        resolveParams(featureConfig, params, firstAnnotation);
-                    }
-                    if (feature.require("feature").require("exclude").asBoolean()) {
-                        if (!includedConfigBuilders.containsKey(dependencySpec.gav)) {
-                            includedConfigBuilders.put(dependencySpec.gav, new ConfigId("standalone", "standalone.xml"));
-                        }
-                        FeatureId.Builder idBuilder = FeatureId.builder(specName);
-                        for(FeatureParameterSpec fparam : resolvedSpec.getIdParams()) {
-                            idBuilder.setParam(fparam.getName(), featureConfig.getParam(fparam.getName()));
-                        }
-                        builder.excludeFeature(dependencySpec.fpName, idBuilder.build());
-                    } else {
-                        builder.addFeature(featureConfig);
-                    }
-                }
-            }
-        }
-    }
-
-    private DependencySpec getFeatureSpec(ProvisioningRuntime runtime, String name) throws ProvisioningDescriptionException {
-        for (FeaturePackRuntime fp : runtime.getFeaturePacks()) {
-            ResolvedFeatureSpec spec = fp.getResolvedFeatureSpec(name);
-            if (spec != null) {
-                return new DependencySpec(FeaturePackConfig.getDefaultOriginName(fp.getSpec().getGav()), fp.getGav(), spec.getSpec());
-            }
-        }
-        for (FeaturePackRuntime fp : runtime.getFeaturePacks()) {
-            FeatureSpec spec = fp.getFeatureSpec(name);
-            if (spec != null) {
-                return new DependencySpec(FeaturePackConfig.getDefaultOriginName(fp.getSpec().getGav()), fp.getGav(), spec);
-            }
-        }
-        return null;
-    }
-
-    private void resolveAddressParams(FeatureConfig featureConfig, Map<String, String> address, FeatureAnnotation annotation) {
-        List<String> addressParams = annotation.getElementAsList(ADDR_PARAMS);
-        List<String> addressParamMappings = annotation.getElementAsList(ADDR_PARAMS_MAPPING);
-        if (addressParamMappings == null || addressParamMappings.isEmpty()) {
-            addressParamMappings = addressParams;
-        }
-        for (int i = 0; i < addressParams.size(); i++) {
-            String value = address.get(addressParams.get(i));
-            if (value != null) {
-                if("undefined".equals(value)) {
-                    value = PM_UNDEFINED;
-                }
-                featureConfig.putParam(addressParamMappings.get(i), value);
-            }
-        }
-    }
-
-    private void resolveParams(FeatureConfig featureConfig, Map<String, String> params, FeatureAnnotation annotation) {
-        List<String> addressParams = annotation.getElementAsList(OP_PARAMS);
-        List<String> addressParamMappings = annotation.getElementAsList(OP_PARAMS_MAPPING);
-        if (addressParamMappings == null || addressParamMappings.isEmpty()) {
-            addressParamMappings = addressParams;
-        }
-        for (int i = 0; i < addressParams.size(); i++) {
-            String value = params.get(addressParams.get(i));
-            if (value != null) {
-                if("undefined".equals(value)) {
-                    value = PM_UNDEFINED;
-                }
-                featureConfig.putParam(addressParamMappings.get(i), value);
-            }
-        }
-    }
-
-    private static class DependencySpec {
-
-        private final String fpName;
-        private final Gav gav;
-        private final FeatureSpec spec;
-
-        DependencySpec(String fpName, Gav gav, FeatureSpec spec) {
-            this.fpName = fpName;
-            this.spec = spec;
-            this.gav = gav;
-        }
     }
 }

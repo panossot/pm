@@ -16,6 +16,7 @@
  */
 package org.jboss.provisioning.plugin.wildfly;
 
+import org.jboss.provisioning.plugin.wildfly.server.CliScriptRunner;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
