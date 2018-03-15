@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jboss.provisioning.plugin.wildfly;
+package org.jboss.provisioning.plugin.wildfly.server;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;

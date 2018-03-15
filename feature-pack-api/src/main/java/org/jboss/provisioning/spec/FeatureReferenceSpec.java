@@ -41,7 +41,7 @@ public class FeatureReferenceSpec {
 
         private Builder(String spec) {
             this.featureSpec = spec;
-            this.name = featureSpec.toString();
+            this.name = featureSpec;
         }
 
         public Builder setOrigin(String origin) {

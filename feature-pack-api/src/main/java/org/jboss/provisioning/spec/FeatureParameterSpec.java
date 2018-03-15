@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 Red Hat, Inc. and/or its affiliates
+ * Copyright 2016-2018 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.jboss.provisioning.spec;
 
 import org.jboss.provisioning.Constants;
@@ -27,6 +26,7 @@ import org.jboss.provisioning.ProvisioningDescriptionException;
 public class FeatureParameterSpec {
 
     public static class Builder {
+
         private String name;
         private boolean featureId;
         private boolean nillable;
@@ -82,6 +82,19 @@ public class FeatureParameterSpec {
         return new Builder(name);
     }
 
+    public static Builder builder(FeatureParameterSpec param) {
+        Builder builder = new Builder(param.getName());
+        builder.setDefaultValue(param.getDefaultValue());
+        if (param.isFeatureId()) {
+            builder.setFeatureId();
+        }
+        if(param.isNillable()) {
+            builder.setNillable();
+        }
+        builder.setType(param.getType());
+        return builder;
+    }
+
     public static FeatureParameterSpec create(String name) throws ProvisioningDescriptionException {
         return new FeatureParameterSpec(name, false, false, null);
     }
@@ -109,7 +122,7 @@ public class FeatureParameterSpec {
     final String type;
 
     private FeatureParameterSpec(String name, boolean featureId, boolean nillable, String defaultValue) throws ProvisioningDescriptionException {
-        if(featureId && nillable) {
+        if (featureId && nillable) {
             throw new ProvisioningDescriptionException("ID parameter " + name + " cannot be nillable.");
         }
         this.name = name;
@@ -120,7 +133,7 @@ public class FeatureParameterSpec {
     }
 
     private FeatureParameterSpec(Builder builder) throws ProvisioningDescriptionException {
-        if(builder.featureId && builder.nillable) {
+        if (builder.featureId && builder.nillable) {
             throw new ProvisioningDescriptionException("ID parameter " + builder.name + " cannot be nillable.");
         }
         this.name = builder.name;
@@ -168,32 +181,43 @@ public class FeatureParameterSpec {
 
     @Override
     public boolean equals(Object obj) {
-        if (this == obj)
+        if (this == obj) {
             return true;
-        if (obj == null)
+        }
+        if (obj == null) {
             return false;
-        if (getClass() != obj.getClass())
+        }
+        if (getClass() != obj.getClass()) {
             return false;
+        }
         FeatureParameterSpec other = (FeatureParameterSpec) obj;
         if (defaultValue == null) {
-            if (other.defaultValue != null)
+            if (other.defaultValue != null) {
                 return false;
-        } else if (!defaultValue.equals(other.defaultValue))
+            }
+        } else if (!defaultValue.equals(other.defaultValue)) {
             return false;
-        if (featureId != other.featureId)
+        }
+        if (featureId != other.featureId) {
             return false;
+        }
         if (name == null) {
-            if (other.name != null)
+            if (other.name != null) {
                 return false;
-        } else if (!name.equals(other.name))
+            }
+        } else if (!name.equals(other.name)) {
             return false;
-        if (nillable != other.nillable)
+        }
+        if (nillable != other.nillable) {
             return false;
+        }
         if (type == null) {
-            if (other.type != null)
+            if (other.type != null) {
                 return false;
-        } else if (!type.equals(other.type))
+            }
+        } else if (!type.equals(other.type)) {
             return false;
+        }
         return true;
     }
 
@@ -201,13 +225,13 @@ public class FeatureParameterSpec {
     public String toString() {
         final StringBuilder buf = new StringBuilder();
         buf.append('[').append(name);
-        if(defaultValue != null) {
+        if (defaultValue != null) {
             buf.append('=').append(defaultValue);
         }
-        if(featureId) {
+        if (featureId) {
             buf.append(" featureId");
         }
-        if(nillable) {
+        if (nillable) {
             buf.append(" nillable");
         }
         buf.append(' ').append(type);

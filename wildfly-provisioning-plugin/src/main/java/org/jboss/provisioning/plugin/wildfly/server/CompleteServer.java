@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 Red Hat, Inc. and/or its affiliates
+ * Copyright 2016-2018 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jboss.provisioning.plugin.wildfly;
+package org.jboss.provisioning.plugin.wildfly.server;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -23,47 +23,41 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.regex.Pattern;
-import org.jboss.provisioning.MessageWriter;
-import org.jboss.provisioning.ProvisioningException;
 import org.wildfly.core.launcher.Launcher;
 import org.wildfly.core.launcher.ProcessHelper;
 import org.wildfly.core.launcher.StandaloneCommandBuilder;
 
 /**
- * Helper class to manage a WildFly Server as an external process.
+ * Helper class to manage a WildFly CompleteServer as an external process.
  * @author Emmanuel Hugonnet (c) 2017 Red Hat, inc.
  */
-public class Server {
+public class CompleteServer {
 
     private Process process;
     private ServerOutputConsumer consumer;
     private final Path installDir;
     private final String serverConfig;
-    private final MessageWriter messageWriter;
+//    private final MessageWriter messageWriter;
 
-    public Server(Path installDir, String serverConfig, MessageWriter messageWriter) {
+    public CompleteServer(Path installDir, String serverConfig) {
         this.installDir = installDir;
         this.serverConfig = serverConfig;
-        this.messageWriter = messageWriter;
+//        this.messageWriter = DefaultMessageWriter.getDefaultInstance();
     }
 
-    private Process launchServer(Path installDir, String serverConfig, MessageWriter messageWriter) throws IOException {
-        messageWriter.verbose("Starting full server for %s using configuration file %s", installDir, serverConfig);
+    private Process launchServer(Path installDir, String serverConfig/*, MessageWriter messageWriter*/) throws IOException {
+//        messageWriter.verbose("Starting full server for %s using configuration file %s", installDir, serverConfig);
         Launcher launcher = new Launcher(StandaloneCommandBuilder.of(installDir).setServerConfiguration(serverConfig))
                 .setRedirectErrorStream(true)
                 .addEnvironmentVariable("JBOSS_HOME", installDir.toString());
         return launcher.launch();
     }
 
-    public void startServer() throws ProvisioningException {
-        try {
-            this.process = launchServer(installDir, serverConfig, messageWriter);
-            this.consumer = new ServerOutputConsumer(process.getInputStream());
-            new Thread(consumer).start();
-            waitUntilStarted();
-        } catch (IOException ex) {
-            throw new ProvisioningException(String.format("Error executing synchronization. Couldn't start the installed server at %s", installDir.toAbsolutePath()));
-        }
+    public void startServer() throws IOException {
+        this.process = launchServer(installDir, serverConfig/*, messageWriter*/);
+        this.consumer = new ServerOutputConsumer(process.getInputStream());
+        new Thread(consumer).start();
+        waitUntilStarted();
     }
 
     public void stopServer() {
@@ -74,12 +68,12 @@ public class Server {
         }
     }
 
-    private void waitUntilStarted() throws ProvisioningException {
+    private void waitUntilStarted() {
         while (!consumer.isStarted()) {
             try {
                 Thread.sleep(100);
                 if (!process.isAlive() && process.exitValue() != 0) {
-                    throw new ProvisioningException(String.format("Error executing synchronization. Couldn't start the installed server at %s", installDir.toAbsolutePath()));
+                    throw new IllegalStateException(String.format("Error executing synchronization. Couldn't start the installed server at %s", installDir.toAbsolutePath()));
                 }
             } catch (InterruptedException ex) {
                 ex.printStackTrace();

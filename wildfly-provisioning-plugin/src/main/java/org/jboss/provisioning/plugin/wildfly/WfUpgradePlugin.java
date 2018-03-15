@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 Red Hat, Inc. and/or its affiliates
+ * Copyright 2016-2018 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,6 +26,7 @@ import org.jboss.provisioning.plugin.UpgradePlugin;
 import org.jboss.provisioning.runtime.ProvisioningRuntime;
 import org.jboss.provisioning.diff.FileSystemMerge;
 import org.jboss.provisioning.diff.Strategy;
+import org.jboss.provisioning.plugin.wildfly.server.EmbeddedServerInvoker;
 
 /**
  *
@@ -38,10 +39,10 @@ public class WfUpgradePlugin implements UpgradePlugin {
         try {
             FileSystemMerge fsMerge = FileSystemMerge.Factory.getInstance(Strategy.OURS, runtime.getMessageWriter(),runtime.getInstallDir(), customizedInstallation);
             fsMerge.executeUpdate(runtime.getDiff());
-            EmbeddedServer embeddedServer = new EmbeddedServer(runtime.getInstallDir().toAbsolutePath(), runtime.getMessageWriter());
+            EmbeddedServerInvoker embeddedServer = new EmbeddedServerInvoker(runtime.getMessageWriter(), runtime.getInstallDir().toAbsolutePath(), null);
             for(Path script :  ((WfDiffResult)runtime.getDiff()).getScripts()) {
                 List<String> lines = Files.readAllLines(script);
-                embeddedServer.execute(false, lines);
+                embeddedServer.execute(lines);
             }
         } catch (IOException ex) {
             runtime.getMessageWriter().error(ex, "Error upgrading");
