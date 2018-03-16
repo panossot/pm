@@ -30,6 +30,7 @@ public interface WfConstants {
     String DOCS = "docs";
     String DOCS_SCHEMA = "docs.schema";
     String DOMAIN = "domain";
+    String HOST = "host";
     String LAYOUT = "layout";
     String LAYERS = "layers";
     String MODULE = "module";
@@ -37,20 +38,22 @@ public interface WfConstants {
     String MODULES = "modules";
     String MODULES_ALL = "modules.all";
     String PM = "pm";
+    String PROFILE = "profile";
     String SCHEMA = "schema";
     String SCHEMA_GROUPS_TXT = "schema-groups.txt";
     String SCRIPTS = "scripts";
     String STANDALONE = "standalone";
+    String STEPS = "steps";
     String SYSTEM = "system";
     String TASKS_XML = "tasks.xml";
     String UTF8 = "UTF-8";
+    String VALUE = "value";
     String WILDFLY = "wildfly";
     String WILDFLY_TASKS_PROPS = "wildfly-tasks.properties";
     String WILDFLY_TASKS_XML = "wildfly-tasks.xml";
 
     // Feature annotation names and elements
     String ADD = "add";
-    String ADDR_PREF = "addr-pref";
     String ADDR_PARAMS = "addr-params";
     String ADDR_PARAMS_MAPPING = "addr-params-mapping";
     String JBOSS_OP = "jboss-op";
@@ -59,6 +62,4 @@ public interface WfConstants {
     String OP_PARAMS = "op-params";
     String OP_PARAMS_MAPPING = "op-params-mapping";
     String WRITE_ATTRIBUTE = "write-attribute";
-    String LINE = "line";
-    String SKIP_IF_FILTERED = "skip-if-filtered";
 }

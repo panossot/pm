@@ -21,12 +21,10 @@ import static org.jboss.provisioning.Constants.PM_UNDEFINED;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.StringTokenizer;
-
 import org.jboss.as.cli.CommandFormatException;
 import org.jboss.as.cli.parsing.StateParser;
 import org.jboss.as.cli.parsing.arguments.ArgumentValueCallbackHandler;
@@ -42,9 +40,11 @@ import org.jboss.provisioning.plugin.ProvisionedConfigHandler;
 import org.jboss.provisioning.plugin.wildfly.WfConstants;
 import org.jboss.provisioning.runtime.ProvisioningRuntime;
 import org.jboss.provisioning.runtime.ResolvedFeatureSpec;
+import org.jboss.provisioning.runtime.ResolvedSpecId;
 import org.jboss.provisioning.spec.FeatureAnnotation;
 import org.jboss.provisioning.state.ProvisionedConfig;
 import org.jboss.provisioning.state.ProvisionedFeature;
+import org.jboss.provisioning.util.PmCollections;
 
 /**
  *
@@ -52,21 +52,156 @@ import org.jboss.provisioning.state.ProvisionedFeature;
  */
 public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
 
-    private static final String DOMAIN = "domain";
-    private static final String HOST = "host";
-    private static final String STANDALONE = "standalone";
+    private interface NameFilter {
+        boolean accepts(String name, int position);
+    }
 
     private static final int OP = 0;
     private static final int WRITE_ATTR = 1;
     private static final int LIST_ADD = 2;
 
-    private static final String UNDEFINED = "undefined";
-    private static final String LIST_UNDEFINED = '[' + PM_UNDEFINED + ']';
+    private static NameFilter STANDALONE_PARAM_FILTER;
+    private static NameFilter getStandaloneParamFilter() {
+        if(STANDALONE_PARAM_FILTER == null) {
+            STANDALONE_PARAM_FILTER = new NameFilter() {
+                @Override
+                public boolean accepts(String name, int position) {
+                    return position > 0 || !(WfConstants.PROFILE.equals(name) || WfConstants.HOST.equals(name));
+                }
+            };
+        }
+        return STANDALONE_PARAM_FILTER;
+    }
+
+    private static NameFilter DOMAIN_PARAM_FILTER;
+    private static NameFilter getDomainParamFilter() {
+        if(DOMAIN_PARAM_FILTER == null) {
+            DOMAIN_PARAM_FILTER = new NameFilter() {
+                @Override
+                public boolean accepts(String name, int position) {
+                    return position > 0 || !WfConstants.HOST.equals(name);
+                }
+            };
+        }
+        return DOMAIN_PARAM_FILTER;
+    }
+
+    private static NameFilter HOST_PARAM_FILTER;
+    private static NameFilter getHostParamFilter() {
+        if(HOST_PARAM_FILTER == null) {
+            HOST_PARAM_FILTER = new NameFilter() {
+                @Override
+                public boolean accepts(String name, int position) {
+                    return position > 0 || !WfConstants.PROFILE.equals(name);
+                }
+            };
+        }
+        return HOST_PARAM_FILTER;
+    }
+
+    private class ManagedOp {
+        String name;
+        List<String> addrParams = Collections.emptyList();
+        List<String> opParams = Collections.emptyList();
+        int op;
+
+        @Override
+        public String toString() {
+            return "ManagedOp{name=" + name + ", addrParams=" + addrParams + ", opParams=" + opParams + ", op=" + op + '}';
+        }
+
+        private void writeOp(ProvisionedFeature feature) throws ProvisioningException {
+            final ModelNode op = writeOpAddress(feature);
+            if (!opParams.isEmpty()) {
+                int i = 0;
+                while (i < opParams.size()) {
+                    final String featureParam = opParams.get(i++);
+                    String value = feature.getConfigParam(featureParam);
+                    if (value == null) {
+                        ++i;
+                        continue;
+                    }
+                    setOpParam(op, opParams.get(i++), value.trim().isEmpty() ? '\"' + value + '\"' : value);
+                }
+            }
+            handleOp(op);
+        }
+
+        private void writeList(ProvisionedFeature feature) throws ProvisioningException {
+            final ModelNode op = writeOpAddress(feature);
+            String value = feature.getConfigParam(opParams.get(0));
+            if (value == null) {
+                throw new ProvisioningDescriptionException(opParams.get(0) + " parameter is null: " + feature);
+            }
+            op.get(WfConstants.NAME).set(opParams.get(1));
+            setOpParam(op, WfConstants.VALUE, value);
+            handleOp(op);
+        }
+
+        private ModelNode writeOpAddress(ProvisionedFeature feature) throws ProvisioningException {
+            final ModelNode op = Operations.createOperation(name);
+            if(addrParams.isEmpty()) {
+                return op;
+            }
+            final ModelNode addr = Operations.getOperationAddress(op);
+            int i = 0;
+            while (i < addrParams.size()) {
+                final String featureParam = addrParams.get(i);
+                if(!paramFilter.accepts(featureParam, i)) {
+                    i += 2;
+                    continue;
+                }
+                String value = feature.getConfigParam(featureParam);
+                if(value == null) {
+                    throw new ProvisioningException("Address parameter " + featureParam + " of " + feature.getId() + " is null");
+                }
+                if(PM_UNDEFINED.equals(value)) {
+                    i += 2;
+                    continue;
+                }
+                ++i;
+                addr.add(addrParams.get(i++), value);
+            }
+            return op;
+        }
+
+        void toCommandLine(ProvisionedFeature feature) throws ProvisioningException {
+            switch (op) {
+                case OP: {
+                    writeOp(feature);
+                    break;
+                }
+                case LIST_ADD: {
+                    writeList(feature);
+                    break;
+                }
+                case WRITE_ATTR: {
+                    writeAttributes(feature);
+                    break;
+                }
+                default:
+                    throw new ProvisioningException("Unexpected op " + op);
+            }
+        }
+
+        private void writeAttributes(ProvisionedFeature feature) throws ProvisioningDescriptionException, ProvisioningException {
+            int i = 0;
+            while (i < opParams.size()) {
+                Object value = feature.getResolvedParam(opParams.get(i++));
+                if (value == null) {
+                    ++i;
+                    continue;
+                }
+                final ModelNode op = writeOpAddress(feature);
+                op.get(WfConstants.NAME).set(opParams.get(i++));
+                setOpParam(op, WfConstants.VALUE, value.toString());
+                handleOp(op);
+            }
+        }
+    }
 
     private List<ManagedOp> createWriteAttributeManagedOperation(ResolvedFeatureSpec spec, FeatureAnnotation annotation) throws ProvisioningException {
         List<ManagedOp> operations = new ArrayList<>();
-
-        final Set<String> skipIfFiltered = parseSet(annotation.getElement(WfConstants.SKIP_IF_FILTERED));
 
         String elemValue = annotation.getElement(WfConstants.ADDR_PARAMS);
         if (elemValue == null) {
@@ -74,7 +209,7 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
         }
         List<String> addrParams  = null;
         try {
-            addrParams = parseList(annotation.getElementAsList(WfConstants.ADDR_PARAMS), paramFilter, skipIfFiltered, annotation.getElementAsList(WfConstants.ADDR_PARAMS_MAPPING));
+            addrParams = parseList(annotation.getElementAsList(WfConstants.ADDR_PARAMS), annotation.getElementAsList(WfConstants.ADDR_PARAMS_MAPPING));
         } catch (ProvisioningDescriptionException e) {
             throw new ProvisioningDescriptionException("Saw an empty parameter name in annotation " + WfConstants.ADDR_PARAMS + "="
                     + elemValue + " of " + spec.getId());
@@ -107,14 +242,11 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
                                 final ManagedOp mop = new ManagedOp();
                                 mop.name = WfConstants.WRITE_ATTRIBUTE;
                                 mop.op = WRITE_ATTR;
-                                mop.addrPref = annotation.getElement(WfConstants.ADDR_PREF);
                                 mop.addrParams = addrParams;
                                 mop.opParams = new ArrayList<>(2);
                                 mop.opParams.add(paramName);
                                 mop.opParams.add(paramName);
                                 operations.add(mop);
-                            } else if (skipIfFiltered.contains(paramName)) {
-                                continue;
                             }
                         }
                     }
@@ -126,13 +258,12 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
             }
         } else {
             try {
-                final List<String> params = parseList(annotation.getElementAsList(WfConstants.OP_PARAMS, PM_UNDEFINED), paramFilter, skipIfFiltered, annotation.getElementAsList(WfConstants.OP_PARAMS_MAPPING));
+                final List<String> params = parseList(annotation.getElementAsList(WfConstants.OP_PARAMS), annotation.getElementAsList(WfConstants.OP_PARAMS_MAPPING));
                 for (int i = 0; i < params.size(); i++) {
                     if (i % 2 == 0) {
                         final ManagedOp mop = new ManagedOp();
                         mop.name = WfConstants.WRITE_ATTRIBUTE;
                         mop.op = WRITE_ATTR;
-                        mop.addrPref = annotation.getElement(WfConstants.ADDR_PREF);
                         mop.addrParams = addrParams;
                         mop.opParams = new ArrayList<>(2);
                         mop.opParams.add(params.get(i));
@@ -154,12 +285,8 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
 
     private List<ManagedOp> createManagedOperation(ResolvedFeatureSpec spec, FeatureAnnotation annotation, String name, int operation) throws ProvisioningException {
         final ManagedOp mop = new ManagedOp();
-        mop.reset();
         mop.name = name;
         mop.op = operation;
-        mop.addrPref = annotation.getElement(WfConstants.ADDR_PREF);
-
-        final Set<String> skipIfFiltered = parseSet(annotation.getElement(WfConstants.SKIP_IF_FILTERED));
 
         String elemValue = annotation.getElement(WfConstants.ADDR_PARAMS);
         if (elemValue == null) {
@@ -167,7 +294,7 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
         }
 
         try {
-            mop.addrParams = parseList(annotation.getElementAsList(WfConstants.ADDR_PARAMS), paramFilter, skipIfFiltered, annotation.getElementAsList(WfConstants.ADDR_PARAMS_MAPPING));
+            mop.addrParams = parseList(annotation.getElementAsList(WfConstants.ADDR_PARAMS), annotation.getElementAsList(WfConstants.ADDR_PARAMS_MAPPING));
         } catch (ProvisioningDescriptionException e) {
             throw new ProvisioningDescriptionException("Saw an empty parameter name in annotation " + WfConstants.ADDR_PARAMS + "="
                     + elemValue + " of " + spec.getId());
@@ -198,8 +325,6 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
                             if (paramFilter.accepts(paramName, j)) {
                                 mop.opParams.add(paramName);
                                 mop.opParams.add(paramName);
-                            } else if (skipIfFiltered.contains(paramName)) {
-                                continue;
                             }
                         }
                     }
@@ -209,7 +334,7 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
             }
         } else {
             try {
-                mop.opParams = parseList(annotation.getElementAsList(WfConstants.OP_PARAMS, PM_UNDEFINED), paramFilter, skipIfFiltered, annotation.getElementAsList(WfConstants.OP_PARAMS_MAPPING));
+                mop.opParams = parseList(annotation.getElementAsList(WfConstants.OP_PARAMS, PM_UNDEFINED), annotation.getElementAsList(WfConstants.OP_PARAMS_MAPPING));
             } catch (ProvisioningDescriptionException e) {
                 throw new ProvisioningDescriptionException("Saw empty parameter name in note " + WfConstants.ADDR_PARAMS
                         + "=" + elemValue + " of " + spec.getId());
@@ -218,131 +343,11 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
         return Collections.singletonList(mop);
     }
 
-    private interface NameFilter {
-        boolean accepts(String name, int position);
-    }
-
-    private class ManagedOp {
-        String line;
-        String addrPref;
-        String name;
-        List<String> addrParams = Collections.emptyList();
-        List<String> opParams = Collections.emptyList();
-        int op;
-
-        @Override
-        public String toString() {
-            return "ManagedOp{" + "line=" + line + ", addrPref=" + addrPref + ", name=" + name + ", addrParams=" + addrParams + ", opParams=" + opParams + ", op=" + op + '}';
-        }
-
-        void reset() {
-            line = null;
-            addrPref = null;
-            name = null;
-            addrParams = Collections.emptyList();
-            opParams = Collections.emptyList();
-            op = OP;
-        }
-
-        private void writeOp(ProvisionedFeature feature) throws ProvisioningException {
-            final ModelNode op = writeOpAddress(feature);
-            if (!opParams.isEmpty()) {
-                int i = 0;
-                while (i < opParams.size()) {
-                    String value = feature.getConfigParam(opParams.get(i++));
-                    if (value == null) {
-                        continue;
-                    }
-                    if (PM_UNDEFINED.equals(value) || LIST_UNDEFINED.equals(value)) {
-                        // value = UNDEFINED;
-                        continue;
-                    }
-                    setOpParam(op, opParams.get(i++), value.trim().isEmpty() ? '\"' + value + '\"' : value);
-                }
-            }
-            handleOp(op);
-        }
-
-        private void writeList(ProvisionedFeature feature) throws ProvisioningException {
-            final ModelNode op = writeOpAddress(feature);
-            String value = feature.getConfigParam(opParams.get(0));
-            if (value == null) {
-                throw new ProvisioningDescriptionException(opParams.get(0) + " parameter is null: " + feature);
-            }
-            if (PM_UNDEFINED.equals(value)) {
-                value = UNDEFINED;
-            }
-            op.get("name").set(opParams.get(1));
-            setOpParam(op, "value", value);
-            handleOp(op);
-        }
-
-        private ModelNode writeOpAddress(ProvisionedFeature feature) throws ProvisioningException {
-            final ModelNode op = Operations.createOperation(name);
-            if(addrParams.isEmpty()) {
-                return op;
-            }
-            final ModelNode addr = Operations.getOperationAddress(op);
-            int i = 0;
-            while (i < addrParams.size()) {
-                String value = feature.getConfigParam(addrParams.get(i++));
-                if (value == null || PM_UNDEFINED.equals(value) || LIST_UNDEFINED.equals(value)) {
-                    continue; // TODO perhaps throw an error in case it's undefined
-                }
-                addr.add(addrParams.get(i++), value);
-            }
-            return op;
-        }
-
-        void toCommandLine(ProvisionedFeature feature) throws ProvisioningException {
-            if (this.line != null) {
-                throw new ProvisioningException("Unsupported line annotation " + this.line);
-            }
-
-            if (addrPref != null) {
-                throw new ProvisioningException("Unsupported addrPref annotation " + addrPref);
-            }
-
-            switch (op) {
-                case OP: {
-                    writeOp(feature);
-                    break;
-                }
-                case LIST_ADD: {
-                    writeList(feature);
-                    break;
-                }
-                case WRITE_ATTR: {
-                    writeAttributes(feature);
-                    break;
-                }
-                default:
-                    throw new ProvisioningException("Unexpected op " + op);
-            }
-        }
-
-        private void writeAttributes(ProvisionedFeature feature) throws ProvisioningDescriptionException, ProvisioningException {
-            int i = 0;
-            while (i < opParams.size()) {
-                Object value = feature.getResolvedParam(opParams.get(i++));
-                if (value == null) {
-                    continue;
-                }
-                if (PM_UNDEFINED.equals(value.toString())|| LIST_UNDEFINED.equals(value.toString())) {
-                    value = UNDEFINED;
-                }
-                final ModelNode op = writeOpAddress(feature);
-                op.get("name").set(opParams.get(i++));
-                setOpParam(op, "value", value.toString());
-                handleOp(op);
-            }
-        }
-    }
-
     private final MessageWriter messageWriter;
     private final WfConfigGenerator configGen;
 
-    private List<ManagedOp> ops = new ArrayList<>();
+    private final Map<ResolvedSpecId, List<ManagedOp>> specOps = new HashMap<>();
+    private List<ManagedOp> ops = Collections.emptyList();
     private NameFilter paramFilter;
 
     private ModelNode composite;
@@ -354,32 +359,16 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
 
     @Override
     public void prepare(ProvisionedConfig config) throws ProvisioningException {
-        if(STANDALONE.equals(config.getModel())) {
+        if(WfConstants.STANDALONE.equals(config.getModel())) {
             configGen.startServer(getEmbeddedArgs(config));
-            paramFilter = new NameFilter() {
-                @Override
-                public boolean accepts(String name, int position) {
-                    return position > 0 || !("profile".equals(name) || HOST.equals(name));
-                }
-            };
-        } else if(DOMAIN.equals(config.getModel())) {
+            paramFilter = getStandaloneParamFilter();
+        } else if(WfConstants.DOMAIN.equals(config.getModel())) {
             configGen.startHc(getEmbeddedArgs(config));
             configGen.execute(Operations.createAddOperation(Operations.createAddress("host", "tmp")));
-            paramFilter = new NameFilter() {
-                @Override
-                public boolean accepts(String name, int position) {
-                    return position > 0 || !HOST.equals(name);
-                }
-            };
-        } else if (HOST.equals(config.getModel())) {
+            paramFilter = getDomainParamFilter();
+        } else if (WfConstants.HOST.equals(config.getModel())) {
             configGen.startHc(getEmbeddedArgs(config));
-            paramFilter = new NameFilter() {
-                @Override
-                public boolean accepts(String name, int position) {
-                    //return position > 0 || !"profile".equals(name); // TODO check whether the position is still required
-                    return !"profile".equals(name);
-                }
-            };
+            paramFilter = getHostParamFilter();
         } else {
             throw new ProvisioningException("Unsupported config model " + config.getModel());
         }
@@ -392,26 +381,28 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
 
     @Override
     public void nextSpec(ResolvedFeatureSpec spec) throws ProvisioningException {
-        ops.clear();
         messageWriter.verbose("    SPEC %s", spec.getName());
         if(!spec.hasAnnotations()) {
+            ops = Collections.emptyList();
             return;
         }
 
-        for (FeatureAnnotation annotation : spec.getAnnotations()) {
-            if(annotation.getName().equals(WfConstants.JBOSS_OP)) {
-                ops.addAll(nextAnnotation(spec, annotation));
-            }
+        ops = specOps.get(spec.getId());
+        if(ops != null) {
+            return;
         }
+
+        ops = Collections.emptyList();
+        for (FeatureAnnotation annotation : spec.getAnnotations()) {
+            if(!annotation.getName().equals(WfConstants.JBOSS_OP)) {
+                continue;
+            }
+            ops = PmCollections.addAll(ops, nextAnnotation(spec, annotation));
+        }
+        specOps.put(spec.getId(), ops);
     }
 
     private List<ManagedOp> nextAnnotation(final ResolvedFeatureSpec spec, final FeatureAnnotation annotation) throws ProvisioningException {
-        if (annotation.hasElement(WfConstants.LINE)) {
-            final ManagedOp mop = new ManagedOp();
-            mop.reset();
-            mop.line = annotation.getElement(WfConstants.LINE);
-            return Collections.singletonList(mop);
-        }
         final String name = annotation.getElement(WfConstants.NAME);
         switch (name) {
             case WfConstants.WRITE_ATTRIBUTE:
@@ -467,7 +458,7 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
 
     private void handleOp(ModelNode op) throws ProvisioningException {
         if(composite != null) {
-            composite.get("steps").add(op);
+            composite.get(WfConstants.STEPS).add(op);
         } else {
             configGen.execute(op);
         }
@@ -489,48 +480,17 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
         op.get(name).set(toSet);
     }
 
-    private static Set<String> parseSet(String str) throws ProvisioningDescriptionException {
-        if (str == null || str.isEmpty()) {
-            return Collections.emptySet();
-        }
-        int comma = str.indexOf(',');
-        if (comma < 1) {
-            return Collections.singleton(str.trim());
-        }
-        final Set<String> list = new HashSet<>();
-        StringTokenizer tokenizer = new StringTokenizer(str, ",", false);
-        while (tokenizer.hasMoreTokens()) {
-            final String paramName = tokenizer.nextToken().trim();
-            if (paramName.isEmpty()) {
-                throw new ProvisioningDescriptionException("Saw an empty list item in note '" + str);
-            }
-            list.add(paramName);
-        }
-        return list;
-    }
-
-    static List<String> parseList(List<String> params, NameFilter filter, Set<String> skipIfFiltered, List<String> mappings) throws ProvisioningDescriptionException {
+    static List<String> parseList(List<String> params, List<String> mappings) throws ProvisioningDescriptionException {
         if (params == null || params.isEmpty()) {
             return Collections.emptyList();
         }
-        List<String> list = new ArrayList<>();
         if (params.size() != mappings.size() && mappings.size() > 0) {
             throw new ProvisioningDescriptionException("Mappings and params don't match");
         }
+        List<String> list = new ArrayList<>(2*params.size());
         for (int i = 0; i < params.size(); i++) {
-            final String paramName = params.get(i);
-            final String mappedName;
-            if(mappings.isEmpty()) {
-                mappedName = paramName;
-            } else {
-                mappedName = mappings.get(i);
-            }
-            if (filter.accepts(paramName, i)) {
-                list.add(paramName);
-                list.add(mappedName);
-            } else if(skipIfFiltered.contains(paramName)) {
-                return null;
-            }
+            list.add(params.get(i));
+            list.add(mappings.isEmpty() ? params.get(i) : mappings.get(i));
         }
         return list;
     }
