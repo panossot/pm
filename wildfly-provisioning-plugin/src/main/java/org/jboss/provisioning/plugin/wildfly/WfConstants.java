@@ -30,6 +30,7 @@ public interface WfConstants {
     String DOCS = "docs";
     String DOCS_SCHEMA = "docs.schema";
     String DOMAIN = "domain";
+    String HOST = "host";
     String LAYOUT = "layout";
     String LAYERS = "layers";
     String MODULE = "module";
@@ -37,13 +38,16 @@ public interface WfConstants {
     String MODULES = "modules";
     String MODULES_ALL = "modules.all";
     String PM = "pm";
+    String PROFILE = "profile";
     String SCHEMA = "schema";
     String SCHEMA_GROUPS_TXT = "schema-groups.txt";
     String SCRIPTS = "scripts";
     String STANDALONE = "standalone";
+    String STEPS = "steps";
     String SYSTEM = "system";
     String TASKS_XML = "tasks.xml";
     String UTF8 = "UTF-8";
+    String VALUE = "value";
     String WILDFLY = "wildfly";
     String WILDFLY_TASKS_PROPS = "wildfly-tasks.properties";
     String WILDFLY_TASKS_XML = "wildfly-tasks.xml";
