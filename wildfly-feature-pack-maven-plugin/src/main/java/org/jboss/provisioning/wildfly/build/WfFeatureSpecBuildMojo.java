@@ -83,8 +83,6 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
     // Feature annotation names and elements
     private static final String ADDR_PARAMS = "addr-params";
     private static final String ADDR_PARAMS_MAPPING = "addr-params-mapping";
-    private static final String OP_PARAMS = "op-params";
-    private static final String OP_PARAMS_MAPPING = "op-params-mapping";
     private static final String EXTENSION = "extension";
     private static final String HOST_PREFIX = "host.";
     private static final String PROFILE_PREFIX = "profile.";
@@ -292,9 +290,9 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
                 if (domainFPs.containsKey(specName)) {
                     FeatureSpec domainSpec = domainFPs.get(specName);
                     domainFPs.remove(specName);
-                    getLog().debug("############ Comparing " + specName + " with " + domainSpec.getName());
+                    debug("############ Comparing %s with %s", specName, domainSpec.getName());
                     if (FeatureSpecFilter.areIdentical(spec, domainSpec, getLog())) {
-                        getLog().debug("-------------" + specName + " and " + domainSpec.getName() + " are IDENTICAL");
+                        debug("-------------%s and %s are IDENTICAL", specName, domainSpec.getName());
                     } else {
                         getLog().warn(specName + " and " + domainSpec.getName() + " are DIFFERENT");
                     }
@@ -302,9 +300,9 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
                     boolean mergeHost = false;
                     String origin = null;
                     if (hostSpec != null) {
-                        getLog().debug("############ Comparing " + specName + " with " + hostSpec.getName());
+                        debug("############ Comparing %s with %s", specName, hostSpec.getName());
                         if (FeatureSpecFilter.areIdentical(spec, hostSpec, getLog())) {
-                            getLog().debug("-------------" + specName + " and " + hostSpec.getName() + " are IDENTICAL");
+                            debug("-------------%s and %s are IDENTICAL", specName, hostSpec.getName());
                             mergeHost = true;
                             domainFPs.remove(hostSpec.getName());
                         } else {
