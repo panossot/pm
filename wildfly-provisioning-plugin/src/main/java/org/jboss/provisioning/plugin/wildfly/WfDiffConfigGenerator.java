@@ -179,12 +179,8 @@ public class WfDiffConfigGenerator {
         }
         for (int i = 0; i < addressParams.size(); i++) {
             String value = params.get(addressParams.get(i));
-            if (value != null) {
-                if("undefined".equals(value)) {
-                    value = PM_UNDEFINED;
-                }
-            } else {
-                value = PM_UNDEFINED;
+            if(value == null) {
+                continue;
             }
             featureConfig.putParam(addressParamMappings.get(i), value);
         }

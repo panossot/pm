@@ -50,7 +50,6 @@ public interface WfConstants {
 
     // Feature annotation names and elements
     String ADD = "add";
-    String ADDR_PREF = "addr-pref";
     String ADDR_PARAMS = "addr-params";
     String ADDR_PARAMS_MAPPING = "addr-params-mapping";
     String JBOSS_OP = "jboss-op";
@@ -59,6 +58,4 @@ public interface WfConstants {
     String OP_PARAMS = "op-params";
     String OP_PARAMS_MAPPING = "op-params-mapping";
     String WRITE_ATTRIBUTE = "write-attribute";
-    String LINE = "line";
-    String SKIP_IF_FILTERED = "skip-if-filtered";
 }
