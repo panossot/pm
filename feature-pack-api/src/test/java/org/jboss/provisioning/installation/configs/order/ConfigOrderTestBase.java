@@ -24,7 +24,7 @@ import java.nio.file.Path;
 
 import org.jboss.provisioning.ProvisioningException;
 import org.jboss.provisioning.plugin.ProvisionedConfigHandler;
-import org.jboss.provisioning.plugin.ProvisioningPlugin;
+import org.jboss.provisioning.plugin.InstallPlugin;
 import org.jboss.provisioning.runtime.ProvisioningRuntime;
 import org.jboss.provisioning.state.ProvisionedConfig;
 import org.jboss.provisioning.test.PmProvisionConfigTestBase;
@@ -38,7 +38,7 @@ abstract class ConfigOrderTestBase extends PmProvisionConfigTestBase {
 
     protected static final String CONFIG_LIST_NAME = "configs.list";
 
-    public static class ConfigListPlugin implements ProvisioningPlugin, ProvisionedConfigHandler {
+    public static class ConfigListPlugin implements InstallPlugin, ProvisionedConfigHandler {
 
         private int configCount;
         private BufferedWriter configWriter;

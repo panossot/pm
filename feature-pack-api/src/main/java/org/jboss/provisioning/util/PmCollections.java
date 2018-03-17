@@ -57,6 +57,28 @@ public class PmCollections {
         return m;
     }
 
+    public static <K,V> Map<K,V> putAll(Map<K,V> m, Map<K, V> values) {
+        if(values.isEmpty()) {
+            return m;
+        }
+        if(m.isEmpty()) {
+            final int size = values.size();
+            if(size == 1) {
+                return values;
+            }
+            m = new HashMap<>(size);
+            m.putAll(values);
+            return m;
+        }
+        if(m.size() == 1) {
+            final Map.Entry<K, V> first = m.entrySet().iterator().next();
+            m = new HashMap<>(values.size());
+            m.put(first.getKey(), first.getValue());
+        }
+        m.putAll(values);
+        return m;
+    }
+
     public static <K,V> Map<K,V> putLinked(Map<K,V> m, K k, V v) {
         if(m.isEmpty()) {
             return Collections.singletonMap(k, v);

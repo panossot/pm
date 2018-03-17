@@ -34,7 +34,6 @@ import java.util.stream.Stream;
 import javax.xml.stream.XMLStreamException;
 
 import org.jboss.provisioning.ArtifactCoords;
-import org.jboss.provisioning.ArtifactCoords.Gav;
 import org.jboss.provisioning.ArtifactException;
 import org.jboss.provisioning.Errors;
 import org.jboss.provisioning.MessageWriter;
@@ -50,6 +49,7 @@ import org.jboss.provisioning.state.ProvisionedConfig;
 import org.jboss.provisioning.util.FeaturePackInstallException;
 import org.jboss.provisioning.util.IoUtils;
 import org.jboss.provisioning.util.PathsUtils;
+import org.jboss.provisioning.util.StringUtils;
 import org.jboss.provisioning.xml.ProvisionedStateXmlWriter;
 import org.jboss.provisioning.xml.ProvisioningXmlWriter;
 import org.jboss.provisioning.ArtifactRepositoryManager;
@@ -57,7 +57,8 @@ import org.jboss.provisioning.Constants;
 import org.jboss.provisioning.config.ConfigId;
 import org.jboss.provisioning.config.ConfigModel;
 import org.jboss.provisioning.plugin.DiffPlugin;
-import org.jboss.provisioning.plugin.ProvisioningPlugin;
+import org.jboss.provisioning.plugin.InstallPlugin;
+import org.jboss.provisioning.plugin.PluginOption;
 import org.jboss.provisioning.plugin.UpgradePlugin;
 
 /**
@@ -111,11 +112,10 @@ public class ProvisioningRuntime implements FeaturePackSet<FeaturePackRuntime>, 
         }
     }
 
-    public static void exportToFeaturePack(ProvisioningRuntime runtime, Path location, Path installationHome) throws ProvisioningDescriptionException, ProvisioningException, IOException {
+    public static void exportToFeaturePack(ProvisioningRuntime runtime, ArtifactCoords.Gav exportGav, Path location, Path installationHome) throws ProvisioningDescriptionException, ProvisioningException, IOException {
         diff(runtime, location, installationHome);
         FeaturePackRepositoryManager fpRepoManager = FeaturePackRepositoryManager.newInstance(location);
-        Gav gav = ArtifactCoords.newGav(runtime.getParameter("gav"));
-        FeaturePackBuilder fpBuilder = fpRepoManager.installer().newFeaturePack(gav);
+        FeaturePackBuilder fpBuilder = fpRepoManager.installer().newFeaturePack(exportGav);
         Map<String, FeaturePackConfig.Builder> builders = new HashMap<>();
         for (FeaturePackConfig fpConfig : runtime.getProvisioningConfig().getFeaturePackDeps()) {
             FeaturePackConfig.Builder builder = FeaturePackConfig.builder(fpConfig.getGav());
@@ -148,7 +148,7 @@ public class ProvisioningRuntime implements FeaturePackSet<FeaturePackRuntime>, 
             throw new ProvisioningException(ioex);
         }
         fpBuilder.getInstaller().install();
-        runtime.artifactResolver.install(gav.toArtifactCoords(), fpRepoManager.resolve(gav.toArtifactCoords()));
+        runtime.artifactResolver.install(exportGav.toArtifactCoords(), fpRepoManager.resolve(exportGav.toArtifactCoords()));
     }
 
     public static void diff(ProvisioningRuntime runtime, Path target, Path customizedInstallation) throws ProvisioningException, IOException {
@@ -178,7 +178,7 @@ public class ProvisioningRuntime implements FeaturePackSet<FeaturePackRuntime>, 
     private final Path tmpDir;
     private final Path pluginsDir;
     private final Map<ArtifactCoords.Ga, FeaturePackRuntime> fpRuntimes;
-    private final Map<String, String> parameters;
+    private final Map<String, String> options;
     private final MessageWriter messageWriter;
     private List<ProvisionedConfig> configs = Collections.emptyList();
     private FileSystemDiffResult diff = FileSystemDiffResult.empty();
@@ -192,7 +192,7 @@ public class ProvisioningRuntime implements FeaturePackSet<FeaturePackRuntime>, 
         this.fpRuntimes = builder.getFpRuntimes();
         this.pluginsDir = builder.pluginsDir; // the pluginsDir is initialized during the getFpRuntimes() invocation, atm
         this.configs = builder.getResolvedConfigs();
-        parameters = builder.rtParams;
+        options = builder.options;
         this.operation = builder.operation;
 
         this.workDir = builder.workDir;
@@ -213,19 +213,11 @@ public class ProvisioningRuntime implements FeaturePackSet<FeaturePackRuntime>, 
             return pluginsClassLoader;
         }
         if (pluginsDir != null) {
-            List<java.net.URL> urls = Collections.emptyList();
+            List<java.net.URL> urls = new ArrayList<>();
             try (Stream<Path> stream = Files.list(pluginsDir)) {
                 final Iterator<Path> i = stream.iterator();
-                while (i.hasNext()) {
-                    switch (urls.size()) {
-                        case 0:
-                            urls = Collections.singletonList(i.next().toUri().toURL());
-                            break;
-                        case 1:
-                            urls = new ArrayList<>(urls);
-                        default:
-                            urls.add(i.next().toUri().toURL());
-                    }
+                while(i.hasNext()) {
+                    urls.add(i.next().toUri().toURL());
                 }
             } catch (IOException e) {
                 throw new ProvisioningException(Errors.readDirectory(pluginsDir), e);
@@ -378,8 +370,48 @@ public class ProvisioningRuntime implements FeaturePackSet<FeaturePackRuntime>, 
         return p;
     }
 
-    public String getParameter(String name) {
-        return parameters.get(name);
+    public boolean isOptionSet(PluginOption option) throws ProvisioningException {
+        if(!options.containsKey(option.getName())) {
+            return false;
+        }
+        if(option.isAcceptsValue()) {
+            return true;
+        }
+        if(options.get(option.getName()) == null) {
+            return true;
+        }
+        throw new ProvisioningException("Plugin option " + option.getName() + " is set to " + options.get(option.getName()) + " but does not accept values");
+    }
+
+    public String getOptionValue(PluginOption option) throws ProvisioningException {
+        return getOptionValue(option, null);
+    }
+
+    public String getOptionValue(PluginOption option, String defaultValue) throws ProvisioningException {
+        final String value = options.get(option.getName());
+        if(value == null) {
+            if(defaultValue != null) {
+                return defaultValue;
+            }
+            defaultValue = option.getDefaultValue();
+            if(defaultValue != null) {
+                return defaultValue;
+            }
+            if(option.isRequired()) {
+                throw new ProvisioningException("Required plugin option " + option.getName() + " has not been provided");
+            }
+            return null;
+        }
+        if(!option.isAcceptsValue()) {
+            throw new ProvisioningException("Plugin option " + option.getName() + " is set to " + value + " but does not accept values");
+        }
+        if(!option.getValueSet().isEmpty() && !option.getValueSet().contains(value)) {
+            final StringBuilder buf = new StringBuilder();
+            buf.append("Plugin option ").append(option.getName()).append(" is set to ").append(value).append(" but expects one of ");
+            StringUtils.append(buf, option.getValueSet());
+            throw new ProvisioningException(buf.toString());
+        }
+        return value;
     }
 
     /**
@@ -408,13 +440,13 @@ public class ProvisioningRuntime implements FeaturePackSet<FeaturePackRuntime>, 
         ClassLoader pluginClassLoader = getPluginClassloader();
         if (pluginClassLoader != null) {
             final Thread thread = Thread.currentThread();
-            final ServiceLoader<ProvisioningPlugin> pluginLoader = ServiceLoader.load(ProvisioningPlugin.class, pluginClassLoader);
-            final Iterator<ProvisioningPlugin> pluginIterator = pluginLoader.iterator();
+            final ServiceLoader<InstallPlugin> pluginLoader = ServiceLoader.load(InstallPlugin.class, pluginClassLoader);
+            final Iterator<InstallPlugin> pluginIterator = pluginLoader.iterator();
             if (pluginIterator.hasNext()) {
                 final ClassLoader ocl = thread.getContextClassLoader();
                 try {
                     thread.setContextClassLoader(pluginClassLoader);
-                    final ProvisioningPlugin plugin = pluginIterator.next();
+                    final InstallPlugin plugin = pluginIterator.next();
                     plugin.postInstall(this);
                     while (pluginIterator.hasNext()) {
                         pluginIterator.next().postInstall(this);

@@ -21,10 +21,11 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
+
 import org.aesh.command.CommandDefinition;
 import org.aesh.command.option.Option;
 import org.aesh.io.Resource;
-
+import org.jboss.provisioning.ArtifactCoords;
 import org.jboss.provisioning.ProvisioningException;
 
 /**
@@ -59,30 +60,29 @@ public class DiffCommand extends FromInstallationCommand {
 
     @Override
     protected void runCommand(PmCommandInvocation session) throws CommandExecutionException {
-        Map<String, String> parameters = new HashMap<>(5);
+        Map<String, String> options = new HashMap<>(5);
         if (host != null) {
-            parameters.put("host", host);
+            options.put("host", host);
         }
         if (port != null) {
-            parameters.put("port", port);
+            options.put("port", port);
         }
         if (protocol != null) {
-            parameters.put("protocol", protocol);
+            options.put("protocol", protocol);
         }
         if (username != null) {
-            parameters.put("username", username);
+            options.put("username", username);
         }
         if (password != null) {
-            parameters.put("password", password);
+            options.put("password", password);
         }
         if (serverConfig != null) {
-            parameters.put("server-config", serverConfig);
+            options.put("server-config", serverConfig);
         }
-        parameters.put("gav", coord);
         final Resource specTargetResource = exportDirArg.resolve(session.getAeshContext().getCurrentWorkingDirectory()).get(0);
         final Path targetFile = Paths.get(specTargetResource.getAbsolutePath());
         try {
-            getManager(session).exportConfigurationChanges(targetFile, parameters, true);
+            getManager(session).exportConfigurationChanges(targetFile, ArtifactCoords.newGav(coord), options);
         } catch (ProvisioningException | IOException e) {
             throw new CommandExecutionException("Failed to export provisioned state", e);
         }

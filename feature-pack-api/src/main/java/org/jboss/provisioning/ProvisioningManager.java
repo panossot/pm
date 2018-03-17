@@ -23,6 +23,7 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
 
@@ -150,6 +151,10 @@ public class ProvisioningManager {
         install(FeaturePackConfig.forGav(fpGav));
     }
 
+    public void install(ArtifactCoords.Gav fpGav, Map<String, String> options) throws ProvisioningException {
+        install(FeaturePackConfig.forGav(fpGav), options);
+    }
+
     /**
      * Installs the desired feature-pack configuration.
      *
@@ -160,11 +165,24 @@ public class ProvisioningManager {
         install(fpConfig, false);
     }
 
+    public void install(FeaturePackConfig fpConfig, Map<String, String> options) throws ProvisioningException {
+        install(fpConfig, false, options);
+    }
+
     public void install(ArtifactCoords.Gav fpGav, boolean replaceInstalledVersion) throws ProvisioningException {
         install(FeaturePackConfig.forGav(fpGav), replaceInstalledVersion);
     }
 
+    public void install(ArtifactCoords.Gav fpGav, boolean replaceInstalledVersion, Map<String, String> options) throws ProvisioningException {
+        install(FeaturePackConfig.forGav(fpGav), replaceInstalledVersion, options);
+    }
+
     public void install(FeaturePackConfig fpConfig, boolean replaceInstalledVersion) throws ProvisioningException {
+        install(fpConfig, replaceInstalledVersion, Collections.emptyMap());
+    }
+
+    public void install(FeaturePackConfig fpConfig, boolean replaceInstalledVersion, Map<String, String> options)
+            throws ProvisioningException {
         final ProvisioningConfig provisionedConfig = this.getProvisioningConfig();
         if(provisionedConfig == null) {
             provision(ProvisioningConfig.builder().addFeaturePackDep(fpConfig).build());
@@ -174,7 +192,7 @@ public class ProvisioningManager {
         final ProvisionedFeaturePack installedFp = getProvisionedState().getFeaturePack(fpConfig.getGav().toGa());
         // if it's installed neither explicitly nor implicitly as a dependency
         if(installedFp == null) {
-            provision(ProvisioningConfig.builder(provisionedConfig).addFeaturePackDep(fpConfig).build());
+            provision(ProvisioningConfig.builder(provisionedConfig).addFeaturePackDep(fpConfig).build(), options);
             return;
         }
 
@@ -193,11 +211,11 @@ public class ProvisioningManager {
             provision(ProvisioningConfig.builder(provisionedConfig)
                     .removeFeaturePackDep(installedFpConfig.getGav())
                     .addFeaturePackDep(origin, fpConfig)
-                    .build());
+                    .build(), options);
             return;
         }
 
-        provision(ProvisioningConfig.builder(provisionedConfig).addFeaturePackDep(fpConfig).build());
+        provision(ProvisioningConfig.builder(provisionedConfig).addFeaturePackDep(fpConfig).build(), options);
     }
 
     /**
@@ -217,7 +235,7 @@ public class ProvisioningManager {
             }
             throw new ProvisioningException(Errors.unknownFeaturePack(gav));
         }
-        doProvision(provisionedConfig, gav.toGa());
+        doProvision(provisionedConfig, gav.toGa(), Collections.emptyMap());
     }
 
     /**
@@ -227,10 +245,20 @@ public class ProvisioningManager {
      * @throws ProvisioningException  in case the re-provisioning fails
      */
     public void provision(ProvisioningConfig provisioningConfig) throws ProvisioningException {
-        doProvision(provisioningConfig, null);
+        doProvision(provisioningConfig, null, Collections.emptyMap());
     }
 
-    private void doProvision(ProvisioningConfig provisioningConfig, ArtifactCoords.Ga uninstallGa) throws ProvisioningException {
+    /**
+     * (Re-)provisions the current installation to the desired specification.
+     *
+     * @param provisioningConfig  the desired installation specification
+     * @throws ProvisioningException  in case the re-provisioning fails
+     */
+    public void provision(ProvisioningConfig provisioningConfig, Map<String, String> options) throws ProvisioningException {
+        doProvision(provisioningConfig, null, options);
+    }
+
+    private void doProvision(ProvisioningConfig provisioningConfig, ArtifactCoords.Ga uninstallGa, Map<String, String> options) throws ProvisioningException {
         checkInstallationDir(installationHome);
 
         if(!provisioningConfig.hasFeaturePackDeps()) {
@@ -243,7 +271,7 @@ public class ProvisioningManager {
             throw new ProvisioningException("Artifact resolver has not been provided.");
         }
 
-        try(ProvisioningRuntime runtime = getRuntime(provisioningConfig, uninstallGa)) {
+        try(ProvisioningRuntime runtime = getRuntime(provisioningConfig, uninstallGa, options)) {
             if(runtime == null) {
                 return;
             }
@@ -266,12 +294,14 @@ public class ProvisioningManager {
         }
     }
 
-    private ProvisioningRuntime getRuntime(ProvisioningConfig provisioningConfig, ArtifactCoords.Ga uninstallGa) throws ProvisioningException {
+    private ProvisioningRuntime getRuntime(ProvisioningConfig provisioningConfig, ArtifactCoords.Ga uninstallGa, Map<String, String> options)
+            throws ProvisioningException {
         final ProvisioningRuntimeBuilder builder = ProvisioningRuntimeBuilder.newInstance(messageWriter)
                 .setArtifactResolver(artifactResolver)
                 .setConfig(provisioningConfig)
                 .setEncoding(encoding)
-                .setInstallDir(installationHome);
+                .setInstallDir(installationHome)
+                .addOptions(options);
         if(uninstallGa != null) {
             builder.uninstall(uninstallGa);
         }
@@ -332,7 +362,7 @@ public class ProvisioningManager {
         IoUtils.copy(userProvisionedXml, exportPath);
     }
 
-    public void exportConfigurationChanges(Path location, Map<String, String> parameters, boolean toFeaturePack) throws ProvisioningException, IOException {
+    public void exportConfigurationChanges(Path location, ArtifactCoords.Gav diffGav, Map<String, String> options) throws ProvisioningException, IOException {
         ProvisioningConfig configuration = this.getProvisioningConfig();
         if (configuration == null) {
             final Path userProvisionedXml = PathsUtils.getProvisioningXml(installationHome);
@@ -348,8 +378,8 @@ public class ProvisioningManager {
         Path tempInstallationDir = IoUtils.createRandomTmpDir();
         try {
             ProvisioningManager reference = new ProvisioningManager(ProvisioningManager.builder()
-                    .setArtifactResolver(this.getArtifactResolver())
-                    .setEncoding(this.getEncoding())
+                    .setArtifactResolver(artifactResolver)
+                    .setEncoding(encoding)
                     .setInstallationHome(tempInstallationDir)
                     .setMessageWriter(new MessageWriter() {
                         @Override
@@ -379,15 +409,15 @@ public class ProvisioningManager {
                     }));
             reference.provision(configuration);
             try (ProvisioningRuntime runtime = ProvisioningRuntimeBuilder.newInstance(messageWriter)
-                    .setArtifactResolver(this.getArtifactResolver())
+                    .setArtifactResolver(artifactResolver)
                     .setConfig(configuration)
-                    .setEncoding(this.getEncoding())
+                    .setEncoding(encoding)
                     .setInstallDir(tempInstallationDir)
-                    .addAllParameters(parameters)
-                    .setOperation(toFeaturePack ? "diff-to-feature-pack" : "diff")
+                    .addOptions(options)
+                    .setOperation(diffGav != null ? "diff-to-feature-pack" : "diff")
                     .build()) {
-                if(toFeaturePack) {
-                    ProvisioningRuntime.exportToFeaturePack(runtime, location, installationHome);
+                if(diffGav != null) {
+                    ProvisioningRuntime.exportToFeaturePack(runtime, diffGav, location, installationHome);
                 } else {
                     ProvisioningRuntime.diff(runtime, location, installationHome);
                     runtime.getDiff().toXML(location, installationHome);
@@ -400,14 +430,14 @@ public class ProvisioningManager {
         }
     }
 
-    public void upgrade(ArtifactCoords.Gav fpGav, Map<String, String> parameters) throws ProvisioningException, IOException {
+    public void upgrade(ArtifactCoords.Gav fpGav, Map<String, String> options) throws ProvisioningException, IOException {
         ProvisioningConfig configuration = this.getProvisioningConfig();
         Path tempInstallationDir = IoUtils.createRandomTmpDir();
         Path stagedDir = IoUtils.createRandomTmpDir();
         try {
             ProvisioningManager reference = new ProvisioningManager(ProvisioningManager.builder()
-                    .setArtifactResolver(this.getArtifactResolver())
-                    .setEncoding(this.getEncoding())
+                    .setArtifactResolver(artifactResolver)
+                    .setEncoding(encoding)
                     .setInstallationHome(tempInstallationDir)
                     .setMessageWriter(new MessageWriter() {
                         @Override
@@ -438,8 +468,8 @@ public class ProvisioningManager {
             reference.provision(configuration);
             Files.createDirectories(stagedDir);
             reference = new ProvisioningManager(ProvisioningManager.builder()
-                    .setArtifactResolver(this.getArtifactResolver())
-                    .setEncoding(this.getEncoding())
+                    .setArtifactResolver(artifactResolver)
+                    .setEncoding(encoding)
                     .setInstallationHome(stagedDir)
                     .setMessageWriter(new MessageWriter() {
                         @Override
@@ -469,11 +499,11 @@ public class ProvisioningManager {
                     }));
             reference.provision(ProvisioningConfig.builder().addFeaturePackDep(FeaturePackConfig.forGav(fpGav)).build());
             try (ProvisioningRuntime runtime = ProvisioningRuntimeBuilder.newInstance(messageWriter)
-                    .setArtifactResolver(this.getArtifactResolver())
+                    .setArtifactResolver(artifactResolver)
                     .setConfig(configuration)
-                    .setEncoding(this.getEncoding())
+                    .setEncoding(encoding)
                     .setInstallDir(tempInstallationDir)
-                    .addAllParameters(parameters)
+                    .addOptions(options)
                     .setOperation("upgrade")
                     .build()) {
                 // install the software
@@ -485,14 +515,6 @@ public class ProvisioningManager {
         } finally {
             IoUtils.recursiveDelete(tempInstallationDir);
         }
-    }
-
-    String getEncoding() {
-        return encoding;
-    }
-
-    ArtifactRepositoryManager getArtifactResolver() {
-        return artifactResolver;
     }
 
     private ProvisioningConfig readProvisioningConfig(Path path) throws ProvisioningException {
