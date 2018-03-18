@@ -25,21 +25,26 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URLClassLoader;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.xml.stream.XMLStreamException;
-import org.jboss.provisioning.ArtifactCoords.Gav;
 
+import javax.xml.stream.XMLStreamException;
+
+import org.jboss.provisioning.ArtifactCoords.Gav;
 import org.jboss.provisioning.MessageWriter;
 import org.jboss.provisioning.ProvisioningException;
 import org.jboss.provisioning.config.ConfigId;
 import org.jboss.provisioning.config.ConfigModel;
 import org.jboss.provisioning.diff.FileSystemDiff;
 import org.jboss.provisioning.plugin.DiffPlugin;
+import org.jboss.provisioning.plugin.PluginOption;
+import org.jboss.provisioning.plugin.ProvisioningPluginWithOptions;
 import org.jboss.provisioning.plugin.wildfly.server.ClassLoaderHelper;
 import org.jboss.provisioning.runtime.ProvisioningRuntime;
 import org.jboss.provisioning.util.PathFilter;
@@ -50,11 +55,7 @@ import org.jboss.provisioning.xml.ConfigXmlWriter;
  *
  * @author Emmanuel Hugonnet (c) 2017 Red Hat, inc.
  */
-public class WfDiffPlugin implements DiffPlugin {
-
-    private static final String CONFIGURE_SYNC = "/synchronization=simple:add(host=%s, port=%s, protocol=%s, username=%s, password=%s)";
-    private static final String EXPORT_DIFF = "attachment save --overwrite --operation=/synchronization=simple:export-diff --file=%s";
-    private static final String EXPORT_FEATURE = "attachment save --overwrite --operation=/synchronization=simple:feature-diff --file=%s";
+public class WfDiffPlugin extends ProvisioningPluginWithOptions implements DiffPlugin {
 
     private static final PathFilter FILTER_FP = PathFilter.Builder.instance()
             .addDirectories("*" + File.separatorChar + "tmp", "*" + File.separatorChar + "log", "*_xml_history", "model_diff")
@@ -65,6 +66,17 @@ public class WfDiffPlugin implements DiffPlugin {
             .addDirectories("*" + File.separatorChar + "tmp", "model_diff")
             .addFiles("standalone.xml", "logging.properties")
             .build();
+
+    @Override
+    protected List<PluginOption> initPluginOptions() {
+        return Arrays.asList(
+                WfDiffConfigGenerator.HOST,
+                WfDiffConfigGenerator.PORT,
+                WfDiffConfigGenerator.PROTOCOL,
+                WfDiffConfigGenerator.USERNAME,
+                WfDiffConfigGenerator.PASSWORD,
+                WfDiffConfigGenerator.SERVER_CONFIG);
+    }
 
     @Override
     public void computeDiff(ProvisioningRuntime runtime, Path customizedInstallation, Path target) throws ProvisioningException {

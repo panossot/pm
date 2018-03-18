@@ -16,20 +16,21 @@
  */
 package org.jboss.provisioning.plugin;
 
-import java.nio.file.Path;
-
 import org.jboss.provisioning.ProvisioningException;
 import org.jboss.provisioning.runtime.ProvisioningRuntime;
 
 /**
- * Diff plug-in can be referenced from a feature-pack configuration.
+ * Provisioning plug-in can be referenced from a feature-pack configuration.
  *
- * Examples of such diff-provisioning tasks could be:
+ * Examples of such post-provisioning tasks could be:
  * - adjust the configuration;
+ * - set file permissions;
+ * - create/remove directory structures;
+ * - etc.
  *
- * @author Emmanuel Hugonnet (c) 2017 Red Hat, inc.
+ * @author Alexey Loubyansky
  */
-public interface DiffPlugin extends ProvisioningPlugin {
+public interface InstallPlugin extends ProvisioningPlugin {
 
-    void computeDiff(ProvisioningRuntime runtime, Path customizedInstallation, Path target) throws ProvisioningException;
+    void postInstall(ProvisioningRuntime runtime) throws ProvisioningException;
 }

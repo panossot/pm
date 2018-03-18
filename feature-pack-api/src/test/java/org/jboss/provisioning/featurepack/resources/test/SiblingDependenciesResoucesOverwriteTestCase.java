@@ -24,7 +24,7 @@ import org.jboss.provisioning.ArtifactCoords;
 import org.jboss.provisioning.ProvisioningDescriptionException;
 import org.jboss.provisioning.ProvisioningException;
 import org.jboss.provisioning.config.FeaturePackConfig;
-import org.jboss.provisioning.plugin.ProvisioningPlugin;
+import org.jboss.provisioning.plugin.InstallPlugin;
 import org.jboss.provisioning.repomanager.FeaturePackRepositoryManager;
 import org.jboss.provisioning.runtime.ProvisioningRuntime;
 import org.jboss.provisioning.state.ProvisionedFeaturePack;
@@ -39,7 +39,7 @@ import org.jboss.provisioning.util.IoUtils;
  */
 public class SiblingDependenciesResoucesOverwriteTestCase extends PmInstallFeaturePackTestBase {
 
-    public static class ResourcesCopyingPlugin implements ProvisioningPlugin {
+    public static class ResourcesCopyingPlugin implements InstallPlugin {
         @Override
         public void postInstall(ProvisioningRuntime runtime) throws ProvisioningException {
             final Path resources = runtime.getResource(".");

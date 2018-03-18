@@ -37,7 +37,7 @@ import org.jboss.provisioning.ProvisioningDescriptionException;
 import org.jboss.provisioning.config.FeaturePackConfig;
 import org.jboss.provisioning.config.ConfigModel;
 import org.jboss.provisioning.config.FeatureGroup;
-import org.jboss.provisioning.plugin.ProvisioningPlugin;
+import org.jboss.provisioning.plugin.InstallPlugin;
 import org.jboss.provisioning.repomanager.fs.FsTaskContext;
 import org.jboss.provisioning.repomanager.fs.FsTaskList;
 import org.jboss.provisioning.spec.FeaturePackSpec;
@@ -188,8 +188,8 @@ public class FeaturePackBuilder {
         return this;
     }
 
-    public FeaturePackBuilder addPlugin(Class<? extends ProvisioningPlugin> pluginCls) {
-        return addService(ProvisioningPlugin.class, pluginCls);
+    public FeaturePackBuilder addPlugin(Class<? extends InstallPlugin> pluginCls) {
+        return addService(InstallPlugin.class, pluginCls);
     }
 
     public FeaturePackBuilder addService(Class<?> serviceInterface, Class<?> serviceImpl) {

@@ -26,7 +26,7 @@ import org.jboss.provisioning.config.FeaturePackConfig;
 import org.jboss.provisioning.config.ConfigModel;
 import org.jboss.provisioning.config.FeatureGroup;
 import org.jboss.provisioning.plugin.ProvisionedConfigHandler;
-import org.jboss.provisioning.plugin.ProvisioningPlugin;
+import org.jboss.provisioning.plugin.InstallPlugin;
 import org.jboss.provisioning.repomanager.FeaturePackRepositoryManager;
 import org.jboss.provisioning.runtime.ProvisioningRuntime;
 import org.jboss.provisioning.runtime.ResolvedFeatureId;
@@ -50,7 +50,7 @@ public class ProfileFeatureIncludesLoggingGroupTestCase extends PmInstallFeature
 
     private static final Gav FP_GAV = ArtifactCoords.newGav("org.jboss.pm.test", "fp1", "1.0.0.Final");
 
-    public static class TestConfigPlugin implements ProvisioningPlugin {
+    public static class TestConfigPlugin implements InstallPlugin {
         private static final TestConfigHandler configHandler = new TestConfigHandler();
         @Override
         public void postInstall(ProvisioningRuntime ctx) throws ProvisioningException {

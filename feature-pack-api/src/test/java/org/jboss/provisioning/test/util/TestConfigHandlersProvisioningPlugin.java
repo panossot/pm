@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 Red Hat, Inc. and/or its affiliates
+ * Copyright 2016-2018 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@ import java.util.ServiceLoader;
 
 import org.jboss.provisioning.ProvisioningException;
 import org.jboss.provisioning.plugin.ProvisionedConfigHandler;
-import org.jboss.provisioning.plugin.ProvisioningPlugin;
+import org.jboss.provisioning.plugin.InstallPlugin;
 import org.jboss.provisioning.runtime.ProvisioningRuntime;
 import org.jboss.provisioning.state.ProvisionedConfig;
 
@@ -29,7 +29,7 @@ import org.jboss.provisioning.state.ProvisionedConfig;
  * @author Alexey Loubyansky
  *
  */
-public class TestConfigHandlersProvisioningPlugin implements ProvisioningPlugin {
+public class TestConfigHandlersProvisioningPlugin implements InstallPlugin {
 
     @Override
     public void postInstall(ProvisioningRuntime ctx) throws ProvisioningException {

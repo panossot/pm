@@ -24,7 +24,7 @@ import org.jboss.provisioning.ProvisioningDescriptionException;
 import org.jboss.provisioning.ProvisioningException;
 import org.jboss.provisioning.config.FeaturePackConfig;
 import org.jboss.provisioning.config.ProvisioningConfig;
-import org.jboss.provisioning.plugin.ProvisioningPlugin;
+import org.jboss.provisioning.plugin.InstallPlugin;
 import org.jboss.provisioning.repomanager.FeaturePackRepositoryManager;
 import org.jboss.provisioning.runtime.ProvisioningRuntime;
 import org.jboss.provisioning.state.ProvisionedFeaturePack;
@@ -39,7 +39,7 @@ import org.jboss.provisioning.util.IoUtils;
  */
 public class MultiplePluginsTestCase extends PmProvisionConfigTestBase {
 
-    public static class Plugin1 implements ProvisioningPlugin {
+    public static class Plugin1 implements InstallPlugin {
         @Override
         public void postInstall(ProvisioningRuntime ctx) throws ProvisioningException {
             try {

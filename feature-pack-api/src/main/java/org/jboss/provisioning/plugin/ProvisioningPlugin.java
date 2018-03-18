@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 Red Hat, Inc. and/or its affiliates
+ * Copyright 2016-2018 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,23 +14,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.jboss.provisioning.plugin;
 
-import org.jboss.provisioning.ProvisioningException;
-import org.jboss.provisioning.runtime.ProvisioningRuntime;
+import java.util.Collections;
+import java.util.Map;
 
 /**
- * Provisioning plug-in can be referenced from a feature-pack configuration.
- *
- * Examples of such post-provisioning tasks could be:
- * - adjust the configuration;
- * - set file permissions;
- * - create/remove directory structures;
- * - etc.
  *
  * @author Alexey Loubyansky
  */
 public interface ProvisioningPlugin {
 
-    void postInstall(ProvisioningRuntime runtime) throws ProvisioningException;
+    default Map<String, PluginOption> getOptions() {
+        return Collections.emptyMap();
+    };
 }

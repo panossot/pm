@@ -30,7 +30,9 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
 import javax.xml.stream.XMLStreamException;
+
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.Property;
 import org.jboss.provisioning.ArtifactCoords;
@@ -40,6 +42,7 @@ import org.jboss.provisioning.config.ConfigId;
 import org.jboss.provisioning.config.ConfigModel;
 import org.jboss.provisioning.config.FeatureConfig;
 import org.jboss.provisioning.config.FeaturePackConfig;
+import org.jboss.provisioning.plugin.PluginOption;
 import org.jboss.provisioning.plugin.wildfly.server.CompleteServerInvoker;
 import org.jboss.provisioning.plugin.wildfly.server.EmbeddedServerInvoker;
 import org.jboss.provisioning.runtime.FeaturePackRuntime;
@@ -60,13 +63,20 @@ public class WfDiffConfigGenerator {
     private static final String EXPORT_DIFF = "attachment save --overwrite --operation=/synchronization=simple:export-diff --file=%s";
     private static final String EXPORT_FEATURE = "attachment save --overwrite --operation=/synchronization=simple:feature-diff --file=%s";
 
+    static final PluginOption HOST = PluginOption.builder("host").setDefaultValue("127.0.0.1").build();
+    static final PluginOption PORT = PluginOption.builder("port").setDefaultValue("9990").build();
+    static final PluginOption PROTOCOL = PluginOption.builder("protocol").setDefaultValue("remote+http").build();
+    static final PluginOption USERNAME = PluginOption.builder("username").setRequired().build();
+    static final PluginOption PASSWORD = PluginOption.builder("password").setRequired().build();
+    static final PluginOption SERVER_CONFIG = PluginOption.builder("server-config").setDefaultValue("standalone.xml").build();
+
     public static ConfigModel exportDiff (ProvisioningRuntime runtime, Map<ArtifactCoords.Gav, ConfigId> includedConfigs, Path customizedInstallation, Path target) throws ProvisioningException {
-        String host = getParameter(runtime, "host", "127.0.0.1");
-        String port = getParameter(runtime, "port", "9990");
-        String protocol = getParameter(runtime, "protocol", "remote+http");
-        String username = getParameter(runtime, "username", "admin");
-        String password = getParameter(runtime, "password", "passw0rd!");
-        String serverConfig = getParameter(runtime, "server-config", "standalone.xml");
+        String host = runtime.getOptionValue(HOST);
+        String port = runtime.getOptionValue(PORT);
+        String protocol = runtime.getOptionValue(PROTOCOL);
+        String username = runtime.getOptionValue(USERNAME);
+        String password = runtime.getOptionValue(PASSWORD);
+        String serverConfig = runtime.getOptionValue(SERVER_CONFIG);
         CompleteServerInvoker server = new CompleteServerInvoker(customizedInstallation.toAbsolutePath(), runtime.getMessageWriter(), serverConfig);
         EmbeddedServerInvoker embeddedServer = new EmbeddedServerInvoker(runtime.getMessageWriter(), runtime.getInstallDir().toAbsolutePath(), serverConfig);
         try {
@@ -85,14 +95,6 @@ public class WfDiffConfigGenerator {
         } finally {
             server.stopServer();
         }
-    }
-
-    private static String getParameter(ProvisioningRuntime runtime, String name, String defaultValue) {
-        String value = runtime.getParameter(name);
-        if (value != null && ! value.isEmpty()) {
-            return runtime.getParameter(name);
-        }
-        return defaultValue;
     }
 
     private static void createConfiguration(ProvisioningRuntime runtime, ConfigModel.Builder builder,

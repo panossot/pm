@@ -61,7 +61,9 @@ import org.jboss.provisioning.ArtifactCoords;
 import org.jboss.provisioning.Errors;
 import org.jboss.provisioning.MessageWriter;
 import org.jboss.provisioning.ProvisioningException;
-import org.jboss.provisioning.plugin.ProvisioningPlugin;
+import org.jboss.provisioning.plugin.PluginOption;
+import org.jboss.provisioning.plugin.InstallPlugin;
+import org.jboss.provisioning.plugin.ProvisioningPluginWithOptions;
 import org.jboss.provisioning.plugin.wildfly.config.CopyArtifact;
 import org.jboss.provisioning.plugin.wildfly.config.CopyPath;
 import org.jboss.provisioning.plugin.wildfly.config.DeletePath;
@@ -80,7 +82,7 @@ import org.jboss.provisioning.util.ZipUtils;
  *
  * @author Alexey Loubyansky
  */
-public class WfProvisioningPlugin implements ProvisioningPlugin {
+public class WfInstallPlugin extends ProvisioningPluginWithOptions implements InstallPlugin {
 
     private static final String CONFIG_GEN_METHOD = "generate";
     private static final String CONFIG_GEN_PATH = "wildfly/wildfly-config-gen.jar";
@@ -94,6 +96,13 @@ public class WfProvisioningPlugin implements ProvisioningPlugin {
     private boolean thinServer;
     private Set<String> schemaGroups = Collections.emptySet();
 
+    private final PluginOption mavenDistOption = PluginOption.builder("jboss.maven.dist").hasNoValue().build();
+
+    @Override
+    protected List<PluginOption> initPluginOptions() {
+        return Collections.singletonList(mavenDistOption);
+    }
+
     /* (non-Javadoc)
      * @see org.jboss.provisioning.util.plugin.ProvisioningPlugin#execute()
      */
@@ -103,12 +112,15 @@ public class WfProvisioningPlugin implements ProvisioningPlugin {
         final MessageWriter messageWriter = runtime.getMessageWriter();
         messageWriter.verbose("WildFly provisioning plug-in");
 
-        final String thinServerProp = System.getProperty("wfThinServer");
-        if(thinServerProp != null) {
-            if(thinServerProp.isEmpty()) {
-                thinServer = true;
-            } else {
-                thinServer = Boolean.parseBoolean(thinServerProp);
+        thinServer = runtime.isOptionSet(mavenDistOption);
+        if(!thinServer) {
+            final String thinServerProp = System.getProperty("wfThinServer");
+            if (thinServerProp != null) {
+                if (thinServerProp.isEmpty()) {
+                    thinServer = true;
+                } else {
+                    thinServer = Boolean.parseBoolean(thinServerProp);
+                }
             }
         }
 
