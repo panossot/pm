@@ -185,7 +185,7 @@ public class ProvisioningManager {
             throws ProvisioningException {
         final ProvisioningConfig provisionedConfig = this.getProvisioningConfig();
         if(provisionedConfig == null) {
-            provision(ProvisioningConfig.builder().addFeaturePackDep(fpConfig).build());
+            provision(ProvisioningConfig.builder().addFeaturePackDep(fpConfig).build(), options);
             return;
         }
 
@@ -294,7 +294,7 @@ public class ProvisioningManager {
         }
     }
 
-    private ProvisioningRuntime getRuntime(ProvisioningConfig provisioningConfig, ArtifactCoords.Ga uninstallGa, Map<String, String> options)
+    public ProvisioningRuntime getRuntime(ProvisioningConfig provisioningConfig, ArtifactCoords.Ga uninstallGa, Map<String, String> options)
             throws ProvisioningException {
         final ProvisioningRuntimeBuilder builder = ProvisioningRuntimeBuilder.newInstance(messageWriter)
                 .setArtifactResolver(artifactResolver)

@@ -59,6 +59,7 @@ import org.jboss.provisioning.config.ConfigModel;
 import org.jboss.provisioning.plugin.DiffPlugin;
 import org.jboss.provisioning.plugin.InstallPlugin;
 import org.jboss.provisioning.plugin.PluginOption;
+import org.jboss.provisioning.plugin.ProvisioningPlugin;
 import org.jboss.provisioning.plugin.UpgradePlugin;
 
 /**
@@ -66,6 +67,10 @@ import org.jboss.provisioning.plugin.UpgradePlugin;
  * @author Alexey Loubyansky
  */
 public class ProvisioningRuntime implements FeaturePackSet<FeaturePackRuntime>, AutoCloseable {
+
+    public interface PluginVisitor<T extends ProvisioningPlugin> {
+        void visitPlugin(T plugin) throws ProvisioningException;
+    }
 
     public static void install(ProvisioningRuntime runtime) throws ProvisioningException {
         // copy package content
@@ -437,19 +442,29 @@ public class ProvisioningRuntime implements FeaturePackSet<FeaturePackRuntime>, 
     }
 
     private void executePlugins() throws ProvisioningException {
+        PluginVisitor<InstallPlugin> visitor = new PluginVisitor<InstallPlugin>() {
+            @Override
+            public void visitPlugin(InstallPlugin plugin) throws ProvisioningException {
+                plugin.postInstall(ProvisioningRuntime.this);
+            }
+        };
+        visitePlugins(visitor, InstallPlugin.class);
+    }
+
+    public <T extends ProvisioningPlugin> void visitePlugins(PluginVisitor<T> visitor, Class<T> clazz) throws ProvisioningException {
         ClassLoader pluginClassLoader = getPluginClassloader();
         if (pluginClassLoader != null) {
             final Thread thread = Thread.currentThread();
-            final ServiceLoader<InstallPlugin> pluginLoader = ServiceLoader.load(InstallPlugin.class, pluginClassLoader);
-            final Iterator<InstallPlugin> pluginIterator = pluginLoader.iterator();
+            final ServiceLoader<T> pluginLoader = ServiceLoader.load(clazz, pluginClassLoader);
+            final Iterator<T> pluginIterator = pluginLoader.iterator();
             if (pluginIterator.hasNext()) {
                 final ClassLoader ocl = thread.getContextClassLoader();
                 try {
                     thread.setContextClassLoader(pluginClassLoader);
-                    final InstallPlugin plugin = pluginIterator.next();
-                    plugin.postInstall(this);
+                    final T plugin = pluginIterator.next();
+                    visitor.visitPlugin(plugin);
                     while (pluginIterator.hasNext()) {
-                        pluginIterator.next().postInstall(this);
+                        visitor.visitPlugin(pluginIterator.next());
                     }
                 } finally {
                     thread.setContextClassLoader(ocl);
@@ -470,46 +485,21 @@ public class ProvisioningRuntime implements FeaturePackSet<FeaturePackRuntime>, 
     }
 
     private void executeDiffPlugins(Path target, Path customizedInstallation) throws ProvisioningException, IOException {
-        ClassLoader pluginClassLoader = getPluginClassloader();
-        if (pluginClassLoader != null) {
-            final Thread thread = Thread.currentThread();
-            final ServiceLoader<DiffPlugin> pluginLoader = ServiceLoader.load(DiffPlugin.class, pluginClassLoader);
-            final Iterator<DiffPlugin> pluginIterator = pluginLoader.iterator();
-            if (pluginIterator.hasNext()) {
-                final ClassLoader ocl = thread.getContextClassLoader();
-                try {
-                    thread.setContextClassLoader(pluginClassLoader);
-                    final DiffPlugin plugin = pluginIterator.next();
-                    plugin.computeDiff(this, customizedInstallation, target);
-                    while (pluginIterator.hasNext()) {
-                        pluginIterator.next().computeDiff(this, customizedInstallation, target);
-                    }
-                } finally {
-                    thread.setContextClassLoader(ocl);
-                }
+        PluginVisitor<DiffPlugin> visitor = new PluginVisitor<DiffPlugin>() {
+            @Override
+            public void visitPlugin(DiffPlugin plugin) throws ProvisioningException {
+                plugin.computeDiff(ProvisioningRuntime.this, customizedInstallation, target);
             }
-        }
+        };
+        visitePlugins(visitor, DiffPlugin.class);
     }
 
     private void executeUpgradePlugins(Path customizedInstallation) throws ProvisioningException {
-        ClassLoader pluginClassLoader = getPluginClassloader();
-        if (pluginClassLoader != null) {
-            final Thread thread = Thread.currentThread();
-            final ServiceLoader<UpgradePlugin> pluginLoader = ServiceLoader.load(UpgradePlugin.class, pluginClassLoader);
-            final Iterator<UpgradePlugin> pluginIterator = pluginLoader.iterator();
-            if (pluginIterator.hasNext()) {
-                final ClassLoader ocl = thread.getContextClassLoader();
-                try {
-                    thread.setContextClassLoader(pluginClassLoader);
-                    final UpgradePlugin plugin = pluginIterator.next();
-                    plugin.upgrade(this, customizedInstallation);
-                    while (pluginIterator.hasNext()) {
-                        pluginIterator.next().upgrade(this, customizedInstallation);
-                    }
-                } finally {
-                    thread.setContextClassLoader(ocl);
-                }
+        PluginVisitor<UpgradePlugin> visitor = new PluginVisitor<UpgradePlugin>() {
+            @Override
+            public void visitPlugin(UpgradePlugin plugin) throws ProvisioningException {
+                plugin.upgrade(ProvisioningRuntime.this, customizedInstallation);
             }
-        }
+        };
     }
 }
