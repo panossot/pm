@@ -28,7 +28,7 @@ import java.util.Map;
  */
 public abstract class ProvisioningPluginWithOptions implements ProvisioningPlugin {
 
-    private static Map<String, PluginOption> pluginOptions;
+    private Map<String, PluginOption> pluginOptions;
 
     @Override
     public Map<String, PluginOption> getOptions() {
