@@ -50,6 +50,7 @@
     <module>wildfly-provisioning-plugin</module>
     <module>wildfly-config-gen</module>
     <module>wildfly-feature-pack-maven-plugin</module>
+    <module>wildfly-feature-spec-gen</module>
   </modules>
 
   <properties>
@@ -78,6 +79,7 @@
     <version.org.eclipse.aether>1.1.0</version.org.eclipse.aether>
     <version.org.aesh>1.1</version.org.aesh>
     <version.org.aesh-extensions>1.1</version.org.aesh-extensions>
+    <version.org.jboss.dmr>1.5.0.Final</version.org.jboss.dmr>
     <version.org.jboss.jandex>2.0.3.Final</version.org.jboss.jandex>
     <version.org.jboss.modules.jboss-modules>1.7.0.Final</version.org.jboss.modules.jboss-modules>
     <version.org.wildfly.core.wildfly-core>4.0.0.Final</version.org.wildfly.core.wildfly-core>
@@ -172,6 +174,12 @@
         <version>${project.version}</version>
       </dependency>
 
+      <dependency>
+        <groupId>${project.groupId}</groupId>
+        <artifactId>wildfly-feature-spec-gen</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+
       <!-- External Dependencies -->
 
       <dependency>
@@ -229,6 +237,12 @@
         <groupId>org.codehaus.plexus</groupId>
         <artifactId>plexus-utils</artifactId>
         <version>${version.org.codehaus.plexus.plexus-utils}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.jboss</groupId>
+        <artifactId>jboss-dmr</artifactId>
+        <version>${version.org.jboss.dmr}</version>
       </dependency>
 
       <dependency>
@@ -312,6 +326,11 @@
       <dependency>
         <groupId>org.wildfly.core</groupId>
         <artifactId>wildfly-cli</artifactId>
+        <version>${version.org.wildfly.core.wildfly-core}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.wildfly.core</groupId>
+        <artifactId>wildfly-embedded</artifactId>
         <version>${version.org.wildfly.core.wildfly-core}</version>
       </dependency>
       <dependency>

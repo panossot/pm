@@ -60,7 +60,10 @@ public class FeatureSpecExporter {
             rootFeatures = rootNode.get("children").asPropertyList();
         }
         for (Property childFeature : rootFeatures) {
-            toFeatureSpec(childFeature, specs, inheritedFeatures, 0);
+            toFeatureSpec(childFeature, specs, inheritedFeatures,
+                    // to even the levels for the corresponding feature resources
+                    // taking into account the domain doesn't have the root feature as host and standalone
+                    childFeature.getName().charAt(0) == 'd' ? 1 : 0);
         }
         return specs;
     }
@@ -79,7 +82,19 @@ public class FeatureSpecExporter {
     }
 
     private static void toFeatureSpec(Property featureProperty, List<FeatureSpec> specs, Map<String, String> inheritedFeatures, int level) throws ProvisioningDescriptionException {
-        ModelNode feature = featureProperty.getValue();
+        if(!inheritedFeatures.containsKey(featureProperty.getName())) {
+            specs.add(buildSpec(featureProperty, inheritedFeatures, level));
+        }
+        final ModelNode feature = featureProperty.getValue();
+        if (feature.hasDefined("children")) {
+            for (Property childFeature : feature.get("children").asPropertyList()) {
+                toFeatureSpec(childFeature, specs, inheritedFeatures, level + 1);
+            }
+        }
+    }
+
+    private static FeatureSpec buildSpec(Property featureProperty, Map<String, String> inheritedFeatures, int level)
+            throws ProvisioningDescriptionException {
         final String specName = featureProperty.getName();
         FeatureSpec.Builder builder = FeatureSpec.builder(specName);
         if(level == 1 && (
@@ -87,6 +102,7 @@ public class FeatureSpecExporter {
                 specName.contains("core-service."))) {
             builder.addAnnotation(FeatureAnnotation.parentChildrenBranch());
         }
+        final ModelNode feature = featureProperty.getValue();
         final FeatureAnnotation annotation = toFeatureAnnotation(feature);
         if (annotation != null) {
             builder.addAnnotation(annotation);
@@ -150,12 +166,7 @@ public class FeatureSpecExporter {
                 }
             }
         }
-        specs.add(builder.build());
-        if (feature.hasDefined("children")) {
-            for (Property childFeature : feature.get("children").asPropertyList()) {
-                toFeatureSpec(childFeature, specs, inheritedFeatures, level + 1);
-            }
-        }
+        return builder.build();
     }
 
     private static boolean isProfileFeature(String featureName) {

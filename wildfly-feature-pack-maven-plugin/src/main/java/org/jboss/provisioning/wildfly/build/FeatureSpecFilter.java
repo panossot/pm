@@ -35,18 +35,25 @@ import org.jboss.provisioning.spec.FeatureSpec;
 public class FeatureSpecFilter {
 
     public static boolean areIdentical(FeatureSpec standalone, FeatureSpec domain, Log log) {
-        if (domain.getName().equals("profile." + standalone.getName())) {
+        final String domainName = domain.getName();
+        final String standaloneName = standalone.getName();
+        if (domainName.equals("profile." + standaloneName)) {
             return sameCapabilities(standalone.getProvidedCapabilities(), domain.getProvidedCapabilities(), log)
                     && sameCapabilities(standalone.getRequiredCapabilities(), domain.getRequiredCapabilities(), log)
                     && samePackages(standalone, domain, log)
                     && sameAnnotations(standalone, domain)
                     && sameProfileFeatureReferences(standalone, domain);
-        } else if (domain.getName().equals("host." + standalone.getName())) { //host subsystem
+        } else if (domainName.equals("host." + standaloneName)) { //host subsystem
             return sameCapabilities(standalone.getProvidedCapabilities(), domain.getProvidedCapabilities(), log)
                     && sameCapabilities(standalone.getRequiredCapabilities(), domain.getRequiredCapabilities(), log)
                     && samePackages(standalone, domain, log)
                     && sameAnnotations(standalone, domain)
                     && sameHostFeatureReferences(standalone, domain);
+        } else if(domainName.equals("domain." + standaloneName)) {
+            return sameCapabilities(standalone.getProvidedCapabilities(), domain.getProvidedCapabilities(), log)
+                    && sameCapabilities(standalone.getRequiredCapabilities(), domain.getRequiredCapabilities(), log)
+                    && samePackages(standalone, domain, log)
+                    && sameAnnotations(standalone, domain);
         }
         return false;
     }
