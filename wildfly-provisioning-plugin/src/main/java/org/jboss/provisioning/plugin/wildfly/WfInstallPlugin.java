@@ -90,6 +90,7 @@ public class WfInstallPlugin extends ProvisioningPluginWithOptions implements In
 
     private ProvisioningRuntime runtime;
     private PropertyResolver versionResolver;
+    private List<Path> installationClassPath = new ArrayList<>();
 
     private PropertyResolver tasksProps;
 
@@ -208,7 +209,9 @@ public class WfInstallPlugin extends ProvisioningPluginWithOptions implements In
         final List<URL> cp = new ArrayList<>();
         try {
             cp.add(configGenJar.toUri().toURL());
-            addJars(runtime.getStagedDir(), cp);
+            for(Path p : installationClassPath) {
+                cp.add(p.toUri().toURL());
+            }
         } catch (IOException e) {
             throw new ProvisioningException("Failed to init classpath for " + runtime.getStagedDir(), e);
         }
@@ -238,27 +241,6 @@ public class WfInstallPlugin extends ProvisioningPluginWithOptions implements In
             } catch (IOException e) {
             }
         }
-    }
-
-    private static List<URL> addJars(Path dir, List<URL> urls) throws IOException {
-        Files.walkFileTree(dir, EnumSet.of(FileVisitOption.FOLLOW_LINKS), Integer.MAX_VALUE,
-                new SimpleFileVisitor<Path>() {
-                    @Override
-                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs)
-                        throws IOException {
-                        return FileVisitResult.CONTINUE;
-                    }
-                    @Override
-                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
-                        throws IOException {
-                        if(!file.getFileName().toString().endsWith(".jar")) {
-                            return FileVisitResult.CONTINUE;
-                        }
-                        urls.add(file.toUri().toURL());
-                        return FileVisitResult.CONTINUE;
-                    }
-                });
-        return urls;
     }
 
     private void processPackages(final FeaturePackRuntime fp) throws ProvisioningException {
@@ -397,6 +379,7 @@ public class WfInstallPlugin extends ProvisioningPluginWithOptions implements In
                         if (thinServer) {
                             // ignore jandex variable, just resolve coordinates to a string
                             attribute.setValue(resolved);
+                            addToInstallationCp(moduleArtifact);
                         } else {
                             final Path targetDir = installDir.resolve(fpModuleDir.relativize(moduleTemplate.getParent()));
                             final String artifactFileName = moduleArtifact.getFileName().toString();
@@ -412,8 +395,10 @@ public class WfInstallPlugin extends ProvisioningPluginWithOptions implements In
                                 JandexIndexer.createIndex(moduleArtifact.toFile(), new FileOutputStream(target));
                                 finalFileName = target.getName();
                             } else {
-                                Files.copy(moduleArtifact, targetDir.resolve(artifactFileName), StandardCopyOption.REPLACE_EXISTING);
                                 finalFileName = artifactFileName;
+                                final Path targetModulePath = targetDir.resolve(artifactFileName);
+                                Files.copy(moduleArtifact, targetModulePath, StandardCopyOption.REPLACE_EXISTING);
+                                addToInstallationCp(targetModulePath);
                             }
                             element.setLocalName("resource-root");
                             attribute.setLocalName("path");
@@ -472,6 +457,7 @@ public class WfInstallPlugin extends ProvisioningPluginWithOptions implements In
                     extractArtifact(jarSrc, jarTarget, copyArtifact);
                 } else {
                     IoUtils.copy(jarSrc, jarTarget);
+                    addToInstallationCp(jarTarget);
                 }
                 runtime.getMessageWriter().verbose("    Copying artifact %s to %s", jarSrc, jarTarget);
                 if(schemaGroups.contains(coords.getGroupId())) {
@@ -552,7 +538,7 @@ public class WfInstallPlugin extends ProvisioningPluginWithOptions implements In
         }
     }
 
-    private static void extractArtifact(Path artifact, Path target, CopyArtifact copy) throws IOException {
+    private void extractArtifact(Path artifact, Path target, CopyArtifact copy) throws IOException {
         if(!Files.exists(target)) {
             Files.createDirectories(target);
         }
@@ -586,13 +572,21 @@ public class WfInstallPlugin extends ProvisioningPluginWithOptions implements In
                             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
                                 throws IOException {
                                 if(copy.includeFile(file.toString().substring(1))) {
-                                    Files.copy(file, target.resolve(zipRoot.relativize(file).toString()));
+                                    final Path targetPath = target.resolve(zipRoot.relativize(file).toString());
+                                    Files.copy(file, targetPath);
+                                    if(targetPath.getFileName().endsWith(".jar")) {
+                                        addToInstallationCp(targetPath);
+                                    }
                                 }
                                 return FileVisitResult.CONTINUE;
                             }
                         });
             }
         }
+    }
+
+    private void addToInstallationCp(Path p) {
+        installationClassPath.add(p);
     }
 
     private static void mkdirs(final WildFlyPackageTasks tasks, Path installDir) throws ProvisioningException {
