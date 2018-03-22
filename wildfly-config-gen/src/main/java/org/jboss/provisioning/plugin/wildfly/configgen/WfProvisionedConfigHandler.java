@@ -207,17 +207,15 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
         if (elemValue == null) {
             throw new ProvisioningException("Required element " + WfConstants.ADDR_PARAMS + " is missing for " + spec.getId());
         }
-        List<String> addrParams  = null;
-        try {
-            addrParams = parseList(annotation.getElementAsList(WfConstants.ADDR_PARAMS), annotation.getElementAsList(WfConstants.ADDR_PARAMS_MAPPING));
-        } catch (ProvisioningDescriptionException e) {
-            throw new ProvisioningDescriptionException("Saw an empty parameter name in annotation " + WfConstants.ADDR_PARAMS + "="
-                    + elemValue + " of " + spec.getId());
+        List<String> addrParams = Collections.emptyList();
+        if (!"server-root".equals(elemValue)) {
+            try {
+                addrParams = parseList(annotation.getElementAsList(WfConstants.ADDR_PARAMS), annotation.getElementAsList(WfConstants.ADDR_PARAMS_MAPPING));
+            } catch (ProvisioningDescriptionException e) {
+                throw new ProvisioningDescriptionException("Saw an empty parameter name in annotation " + WfConstants.ADDR_PARAMS + "="
+                        + elemValue + " of " + spec.getId());
+            }
         }
-        if (addrParams == null) {
-            return Collections.emptyList();
-        }
-
         elemValue = annotation.getElement(WfConstants.OP_PARAMS, Constants.PM_UNDEFINED);
         if (Constants.PM_UNDEFINED.equals(elemValue)) {
             if (spec.hasParams()) {

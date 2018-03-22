@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 Red Hat, Inc. and/or its affiliates
+ * Copyright 2016-2018 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,13 +16,10 @@
  */
 package org.jboss.provisioning.plugin;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-
-import javax.inject.Inject;
-
+import java.io.File;
+import java.util.List;
+import java.util.Map;
+import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -31,19 +28,33 @@ import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
+import org.apache.maven.project.MavenProject;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
-import org.eclipse.aether.installation.InstallationException;
-import org.jboss.provisioning.Constants;
-import org.jboss.provisioning.Errors;
-import org.jboss.provisioning.plugin.util.MavenPluginUtil;
+import org.jboss.provisioning.plugin.util.ArtifactItem;
+import org.jboss.provisioning.plugin.util.ConfigurationId;
+import org.jboss.provisioning.plugin.util.FeaturePackInstaller;
 
 /**
- *
- * @author Alexey Loubyansky
+ * Maven plugin to install a feature pack.
+ * @author Emmanuel Hugonnet (c) 2017 Red Hat, inc.
  */
-@Mojo(name = "install", requiresDependencyResolution = ResolutionScope.RUNTIME, defaultPhase = LifecyclePhase.COMPILE)
+@Mojo(name = "provision", requiresDependencyResolution = ResolutionScope.COMPILE_PLUS_RUNTIME, defaultPhase = LifecyclePhase.PROCESS_TEST_RESOURCES)
 public class FeaturePackInstallMojo extends AbstractMojo {
+
+    private static final String SYSPROP_KEY_JBOSS_SERVER_BASE_DIR = "jboss.server.base.dir";
+    private static final String SYSPROP_KEY_JBOSS_SERVER_CONFIG_DIR = "jboss.server.config.dir";
+    private static final String SYSPROP_KEY_JBOSS_SERVER_DEPLOY_DIR = "jboss.server.deploy.dir";
+    private static final String SYSPROP_KEY_JBOSS_SERVER_TEMP_DIR = "jboss.server.temp.dir";
+    private static final String SYSPROP_KEY_JBOSS_SERVER_LOG_DIR = "jboss.server.log.dir";
+    private static final String SYSPROP_KEY_JBOSS_SERVER_DATA_DIR = "jboss.server.data.dir";
+
+    private static final String SYSPROP_KEY_JBOSS_DOMAIN_BASE_DIR = "jboss.domain.base.dir";
+    private static final String SYSPROP_KEY_JBOSS_DOMAIN_CONFIG_DIR = "jboss.domain.config.dir";
+    private static final String SYSPROP_KEY_JBOSS_DOMAIN_DEPLOYMENT_DIR = "jboss.domain.deployment.dir";
+    private static final String SYSPROP_KEY_JBOSS_DOMAIN_TEMP_DIR = "jboss.domain.temp.dir";
+    private static final String SYSPROP_KEY_JBOSS_DOMAIN_LOG_DIR = "jboss.domain.log.dir";
+    private static final String SYSPROP_KEY_JBOSS_DOMAIN_DATA_DIR = "jboss.domain.data.dir";
 
     @Component
     protected RepositorySystem repoSystem;
@@ -51,25 +62,65 @@ public class FeaturePackInstallMojo extends AbstractMojo {
     @Parameter(defaultValue = "${repositorySystemSession}", readonly = true)
     protected RepositorySystemSession repoSession;
 
-    @Inject
-    private MavenPluginUtil mavenPluginUtil;
+    @Parameter(defaultValue = "${project}", readonly = true, required = true)
+    protected MavenProject project;
+
+    @Parameter(defaultValue = "${session}", readonly = true, required = true)
+    protected MavenSession session;
+
+    @Parameter(required = true)
+    private File outputDirectory;
+
+    @Parameter(required = false)
+    private File modelConfiguration;
+
+    @Parameter(required = false, defaultValue = "false")
+    private Boolean inheritPackages;
+
+    @Parameter(required = true)
+    private ArtifactItem featurePack;
+
+    @Parameter(required = false)
+    private List<ConfigurationId> configs;
+
+    @Parameter(required = false)
+    private List<String> excludedPackages;
+
+    @Parameter(required = false)
+    private List<String> includedPackages;
+
+    @Parameter(required = false)
+    private Map<String, String> options;
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
-
-        final String workdirPath = repoSession.getSystemProperties().get(Constants.PM_INSTALL_WORK_DIR);
-        if(workdirPath == null) {
-            throw new MojoExecutionException(FpMavenErrors.propertyMissing(Constants.PM_INSTALL_WORK_DIR));
-        }
-        final Path workDir = Paths.get(workdirPath);
-        if(!Files.exists(workDir)) {
-            throw new MojoExecutionException(Errors.pathDoesNotExist(workDir.toAbsolutePath()));
-        }
-
-        try {
-            repoSystem.install(repoSession, mavenPluginUtil.getInstallLayoutRequest(workDir, null));
-        } catch (InstallationException | IOException e) {
-            throw new MojoExecutionException(FpMavenErrors.featurePackInstallation(), e);
-        }
+        resetProperties();
+        FeaturePackInstaller installer = new FeaturePackInstaller(
+                repoSession.getLocalRepository().getBasedir().toPath(),
+                outputDirectory.toPath(),
+                modelConfiguration == null ? null : modelConfiguration.toPath().toAbsolutePath(),
+                configs,
+                featurePack.getArtifactCoords().toGav().toString(),
+                inheritPackages,
+                includedPackages,
+                excludedPackages,
+                options);
+        installer.install();
     }
+
+    private static void resetProperties() {
+        System.clearProperty(SYSPROP_KEY_JBOSS_SERVER_BASE_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_SERVER_CONFIG_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_SERVER_DATA_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_SERVER_DEPLOY_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_SERVER_TEMP_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_SERVER_LOG_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_DOMAIN_BASE_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_DOMAIN_CONFIG_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_DOMAIN_DATA_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_DOMAIN_DEPLOYMENT_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_DOMAIN_TEMP_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_DOMAIN_LOG_DIR);
+    }
+
 }
