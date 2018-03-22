@@ -16,6 +16,7 @@
  */
 package org.jboss.provisioning.cli;
 
+import org.jboss.provisioning.cli.cmd.plugin.InstallCommand;
 import java.util.logging.LogManager;
 import org.aesh.command.impl.registry.AeshCommandRegistryBuilder;
 import org.aesh.command.registry.CommandRegistry;
@@ -37,11 +38,16 @@ public class CliMain {
     public static void main(String[] args) throws Exception {
         Configuration config = Configuration.parse();
         final PmSession pmSession = new PmSession(config);
+
+        // Create commands that are dynamic (or contain dynamic sub commands).
+        // Options are discovered at execution time
+        InstallCommand install = new InstallCommand(pmSession);
+        ProvisionedSpecCommand state = new ProvisionedSpecCommand(pmSession);
+
         CommandRegistry registry = new AeshCommandRegistryBuilder()
-                .command(new InstallCommand())
-                .command(ProvisionedSpecCommand.class)
+                .command(state)
+                .command(install.createCommand())
                 .command(ProvisionSpecCommand.class)
-                .command(DiffCommand.class)
                 .command(ChangesCommand.class)
                 .command(UpgradeCommand.class)
                 .command(UninstallCommand.class)
@@ -63,6 +69,11 @@ public class CliMain {
                 completerInvocationProvider(pmSession).
                 commandInvocationProvider(pmSession).
                 build();
+
+        // These commands require the aeshContext to properly operate
+        install.setAeshContext(settings.aeshContext());
+        state.setAeshContext(settings.aeshContext());
+
         pmSession.setOut(settings.stdOut());
         pmSession.setErr(settings.stdErr());
         ReadlineConsole console = new ReadlineConsole(settings);
