@@ -16,21 +16,51 @@
  */
 package org.jboss.provisioning.cli;
 
+import java.util.ArrayList;
+import java.util.List;
 import org.aesh.command.Command;
 import org.aesh.command.CommandException;
 import org.aesh.command.CommandResult;
+import org.aesh.command.GroupCommand;
 import org.aesh.command.GroupCommandDefinition;
-import org.aesh.command.invocation.CommandInvocation;
+import org.aesh.command.container.CommandContainer;
+import org.aesh.command.parser.CommandLineParserException;
+import org.aesh.readline.AeshContext;
+import org.jboss.provisioning.cli.cmd.plugin.DiffCommand;
 
 /**
  *
  * @author Alexey Loubyansky
  */
-@GroupCommandDefinition(description = "", name = "state", groupCommands={ProvisionedSpecDisplayCommand.class,ProvisionedSpecExportCommand.class, DiffCommand.class})
-public class ProvisionedSpecCommand implements Command<CommandInvocation> {
+@GroupCommandDefinition(description = "", name = "state")
+public class ProvisionedSpecCommand implements GroupCommand<PmCommandInvocation, Command> {
+
+    private final DiffCommand diffCommand;
+
+    ProvisionedSpecCommand(PmSession pmSession) {
+        this.diffCommand = new DiffCommand(pmSession);
+    }
+    @Override
+    public List<Command> getCommands() {
+        List<Command> commands = new ArrayList<>();
+        commands.add(new ProvisionedSpecDisplayCommand());
+        commands.add(new ProvisionedSpecExportCommand());
+        return commands;
+    }
+
+    public void setAeshContext(AeshContext ctx) {
+        diffCommand.setAeshContext(ctx);
+    }
 
     @Override
-    public CommandResult execute(CommandInvocation commandInvocation) throws CommandException, InterruptedException {
+    public List<CommandContainer<Command<PmCommandInvocation>, PmCommandInvocation>> getParsedCommands() throws CommandLineParserException {
+        List<CommandContainer<Command<PmCommandInvocation>, PmCommandInvocation>> commands = new ArrayList<>();
+        commands.add(diffCommand.createCommand());
+        return commands;
+    }
+
+    @Override
+    public CommandResult execute(PmCommandInvocation commandInvocation) throws CommandException, InterruptedException {
         commandInvocation.println("subcommand missing");
         return CommandResult.FAILURE;
     }

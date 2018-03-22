@@ -44,11 +44,11 @@ import org.jboss.provisioning.plugin.FpMavenErrors;
  *
  * @author Alexey Loubyansky
  */
-class MavenArtifactRepositoryManager implements ArtifactRepositoryManager {
+public class MavenArtifactRepositoryManager implements ArtifactRepositoryManager {
 
     private static final ArtifactRepositoryManager INSTANCE = new MavenArtifactRepositoryManager();
 
-    static ArtifactRepositoryManager getInstance() {
+    public static ArtifactRepositoryManager getInstance() {
         return INSTANCE;
     }
 

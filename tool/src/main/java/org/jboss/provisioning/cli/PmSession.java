@@ -67,7 +67,7 @@ public class PmSession implements CommandInvocationProvider<PmCommandInvocation>
                 .append("]$ ").toString());
     }
 
-    static Path getWorkDir(AeshContext aeshCtx) {
+    public static Path getWorkDir(AeshContext aeshCtx) {
         return Paths.get(aeshCtx.getCurrentWorkingDirectory().getAbsolutePath());
     }
 
