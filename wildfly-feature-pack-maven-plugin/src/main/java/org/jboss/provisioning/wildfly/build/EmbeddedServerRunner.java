@@ -68,10 +68,10 @@ public class EmbeddedServerRunner {
 
     private static void execute(Path wildfly, Path outputDir, Map<String, String> inheritedFeatures, String methodName) throws IOException, MojoExecutionException {
         final ClassLoader originalCl = Thread.currentThread().getContextClassLoader();
+        resetProperties();
         Properties props = System.getProperties();
         try (URLClassLoader newCl = prepareClassLoader(wildfly, originalCl)) {
             Thread.currentThread().setContextClassLoader(newCl);
-            resetProperties(wildfly);
             final Class<?> cliTest = newCl.loadClass("org.jboss.provisioning.wildfly.build.EmbeddedScriptRunner");
             final Method test = cliTest.getMethod(methodName, Path.class, Path.class, Map.class, Properties.class);
             test.invoke(cliTest.newInstance(), wildfly, outputDir, inheritedFeatures, props);
@@ -79,6 +79,7 @@ public class EmbeddedServerRunner {
             throw new MojoExecutionException(ex.getMessage(), ex);
         } finally {
             Thread.currentThread().setContextClassLoader(originalCl);
+            resetProperties();
         }
     }
 
@@ -92,10 +93,10 @@ public class EmbeddedServerRunner {
 
     private static List<FeatureSpec> execute(Path wildfly, Map<String, String> inheritedFeatures, String methodName) throws IOException, MojoExecutionException {
         final ClassLoader originalCl = Thread.currentThread().getContextClassLoader();
+        resetProperties();
         Properties props = System.getProperties();
         try (URLClassLoader newCl = prepareClassLoader(wildfly, originalCl)) {
             Thread.currentThread().setContextClassLoader(newCl);
-            resetProperties(wildfly);
             final Class<?> cliTest = newCl.loadClass("org.jboss.provisioning.wildfly.build.EmbeddedScriptRunner");
             final Method test = cliTest.getMethod(methodName, Path.class, Properties.class);
             Object result = test.invoke(cliTest.newInstance(), wildfly, props); //should be a ModelNode
@@ -105,6 +106,7 @@ public class EmbeddedServerRunner {
             throw new MojoExecutionException(ex.getMessage(), ex);
         } finally {
             Thread.currentThread().setContextClassLoader(originalCl);
+            resetProperties();
         }
     }
 
@@ -141,21 +143,21 @@ public class EmbeddedServerRunner {
         return urls;
     }
 
-    private static void resetProperties(Path wildfly) {
-        Path jbossBaseDir = wildfly.resolve("standalone");
-        System.setProperty(SYSPROP_KEY_JBOSS_SERVER_BASE_DIR, jbossBaseDir.toString());
-        System.setProperty(SYSPROP_KEY_JBOSS_SERVER_CONFIG_DIR, jbossBaseDir.resolve("configuration").toString());
-        System.setProperty(SYSPROP_KEY_JBOSS_SERVER_DATA_DIR, jbossBaseDir.resolve("data").toString());
-        System.setProperty(SYSPROP_KEY_JBOSS_SERVER_DEPLOY_DIR, jbossBaseDir.resolve("data").resolve("content").toString());
-        System.setProperty(SYSPROP_KEY_JBOSS_SERVER_TEMP_DIR, jbossBaseDir.resolve("data").resolve("tmp").toString());
-        System.setProperty(SYSPROP_KEY_JBOSS_SERVER_LOG_DIR, jbossBaseDir.resolve("log").toString());
-        jbossBaseDir = wildfly.resolve("domain");
-        System.setProperty(SYSPROP_KEY_JBOSS_DOMAIN_BASE_DIR, jbossBaseDir.toString());
-        System.setProperty(SYSPROP_KEY_JBOSS_DOMAIN_CONFIG_DIR, jbossBaseDir.resolve("configuration").toString());
-        System.setProperty(SYSPROP_KEY_JBOSS_DOMAIN_DATA_DIR, jbossBaseDir.resolve("data").toString());
-        System.setProperty(SYSPROP_KEY_JBOSS_DOMAIN_DEPLOYMENT_DIR, jbossBaseDir.resolve("data").resolve("content").toString());
-        System.setProperty(SYSPROP_KEY_JBOSS_DOMAIN_TEMP_DIR, jbossBaseDir.resolve("data").resolve("tmp").toString());
-        System.setProperty(SYSPROP_KEY_JBOSS_DOMAIN_LOG_DIR, jbossBaseDir.resolve("log").toString());
+
+    private static void resetProperties() {
+        System.clearProperty(SYSPROP_KEY_JBOSS_SERVER_BASE_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_SERVER_CONFIG_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_SERVER_DATA_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_SERVER_DEPLOY_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_SERVER_TEMP_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_SERVER_LOG_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_DOMAIN_BASE_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_DOMAIN_CONFIG_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_DOMAIN_DATA_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_DOMAIN_DEPLOYMENT_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_DOMAIN_TEMP_DIR);
+        System.clearProperty(SYSPROP_KEY_JBOSS_DOMAIN_LOG_DIR);
+        System.clearProperty("module.path");
     }
 
     private EmbeddedServerRunner() {

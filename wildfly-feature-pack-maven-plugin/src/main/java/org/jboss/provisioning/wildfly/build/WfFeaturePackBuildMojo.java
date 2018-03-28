@@ -127,11 +127,6 @@ public class WfFeaturePackBuildMojo extends AbstractMojo {
     @Parameter(alias = "resources-dir", defaultValue = "src/main/resources", property = "wildfly.feature.pack.resourcesDir", required = true)
     private String resourcesDir;
 
-    /**
-     * The name of the server.
-     */
-    @Parameter(alias = "server-name", defaultValue = "${project.build.finalName}", property = "wildfly.feature.pack.serverName")
-    private String serverName;
 
     /**
      * The directory for the built artifact.
@@ -178,14 +173,18 @@ public class WfFeaturePackBuildMojo extends AbstractMojo {
             }
         }
         final Path targetResources = Paths.get(buildName, Constants.RESOURCES);
-        try {
-            IoUtils.copy(Paths.get(configDir.getAbsolutePath() + resourcesDir), targetResources);
-        } catch (IOException e1) {
-            throw new MojoExecutionException(Errors.copyFile(Paths.get(configDir.getAbsolutePath()).resolve(resourcesDir), targetResources), e1);
+        final Path specsDir = Paths.get(configDir.getAbsolutePath() + resourcesDir);
+        if (Files.exists(specsDir)) {
+            getLog().info("WfFeaturePackBuildMojo copying specs " + specsDir);
+            try {
+                IoUtils.copy(specsDir, targetResources);
+            } catch (IOException e1) {
+                throw new MojoExecutionException(Errors.copyFile(specsDir, targetResources), e1);
+            }
         }
 
         final Path workDir = Paths.get(buildName, WfConstants.LAYOUT);
-        //getLog().info("WfFeaturePackBuildMojo.execute " + workDir);
+//        getLog().info("WfFeaturePackBuildMojo.execute " + workDir);
         IoUtils.recursiveDelete(workDir);
         final String fpArtifactId = project.getArtifactId() + "-new";
         final Path fpDir = workDir.resolve(project.getGroupId()).resolve(fpArtifactId).resolve(project.getVersion());
@@ -215,43 +214,25 @@ public class WfFeaturePackBuildMojo extends AbstractMojo {
         }
 
         final Path srcModulesDir = targetResources.resolve(WfConstants.MODULES).resolve(WfConstants.SYSTEM).resolve(WfConstants.LAYERS).resolve(WfConstants.BASE);
-        if(!Files.exists(srcModulesDir)) {
-            throw new MojoExecutionException(Errors.pathDoesNotExist(srcModulesDir));
+        if (Files.exists(srcModulesDir)) {
+            addModulesAll(srcModulesDir, fpBuilder, targetResources, fpPackagesDir);
         }
 
-        final PackageSpec.Builder modulesAll = PackageSpec.builder(WfConstants.MODULES_ALL);
-        try {
-            final Map<String, Path> moduleXmlByPkgName = findModules(srcModulesDir);
-            if(moduleXmlByPkgName.isEmpty()) {
-                throw new MojoExecutionException("Modules not found in " + srcModulesDir);
-            }
-            packageModules(fpBuilder, targetResources, moduleXmlByPkgName, fpPackagesDir, modulesAll);
-        } catch (IOException e) {
-            throw new MojoExecutionException("Failed to process modules content", e);
-        }
-        if(!fpDependencies.isEmpty()) {
-            for(Map.Entry<String, FeaturePackLayout> fpDep : fpDependencies.entrySet()) {
+        if (!fpDependencies.isEmpty()) {
+            for (Map.Entry<String, FeaturePackLayout> fpDep : fpDependencies.entrySet()) {
                 final FeaturePackLayout fpDepLayout = fpDep.getValue();
-                if (fpDepLayout.hasPackage(WfConstants.MODULES_ALL)) {
-                    modulesAll.addPackageDep(fpDep.getKey(), WfConstants.MODULES_ALL);
-                }
-                if(fpDepLayout.hasPackage(WfConstants.DOCS)) {
+                if (fpDepLayout.hasPackage(WfConstants.DOCS)) {
                     docsBuilder.addPackageDep(fpDep.getKey(), WfConstants.DOCS);
                 }
             }
         }
-        try {
-            final PackageSpec modulesAllPkg = modulesAll.build();
-            PackageXmlWriter.getInstance().write(modulesAllPkg, fpPackagesDir.resolve(modulesAllPkg.getName()).resolve(Constants.PACKAGE_XML));
-            fpBuilder.addPackage(modulesAllPkg);
-        } catch (XMLStreamException | IOException e) {
-            throw new MojoExecutionException("Failed to add package", e);
-        }
-
-        try {
-            packageContent(fpBuilder, targetResources.resolve(Constants.CONTENT), fpPackagesDir);
-        } catch (IOException e) {
-            throw new MojoExecutionException("Failed to process content", e);
+        final Path contentDir = targetResources.resolve(Constants.CONTENT);
+        if (Files.exists(contentDir)) {
+            try {
+                packageContent(fpBuilder, contentDir, fpPackagesDir);
+            } catch (IOException e) {
+                throw new MojoExecutionException("Failed to process content", e);
+            }
         }
 
         if(wfFpConfig.hasSchemaGroups()) {
@@ -325,6 +306,35 @@ public class WfFeaturePackBuildMojo extends AbstractMojo {
             repoSystem.install(repoSession, mavenPluginUtil.getInstallLayoutRequest(workDir, project.getFile()));
         } catch (InstallationException | IOException e) {
             throw new MojoExecutionException(FpMavenErrors.featurePackInstallation(), e);
+        }
+    }
+
+    private void addModulesAll(final Path srcModulesDir, final FeaturePackLayout.Builder fpBuilder, final Path targetResources, final Path fpPackagesDir) throws MojoExecutionException {
+        getLog().info("WfFeaturePackBuildMojo adding modules.all");
+        final PackageSpec.Builder modulesAll = PackageSpec.builder(WfConstants.MODULES_ALL);
+        try {
+            final Map<String, Path> moduleXmlByPkgName = findModules(srcModulesDir);
+            if (moduleXmlByPkgName.isEmpty()) {
+                throw new MojoExecutionException("Modules not found in " + srcModulesDir);
+            }
+            packageModules(fpBuilder, targetResources, moduleXmlByPkgName, fpPackagesDir, modulesAll);
+        } catch (IOException e) {
+            throw new MojoExecutionException("Failed to process modules content", e);
+        }
+        if (!fpDependencies.isEmpty()) {
+            for (Map.Entry<String, FeaturePackLayout> fpDep : fpDependencies.entrySet()) {
+                final FeaturePackLayout fpDepLayout = fpDep.getValue();
+                if (fpDepLayout.hasPackage(WfConstants.MODULES_ALL)) {
+                    modulesAll.addPackageDep(fpDep.getKey(), WfConstants.MODULES_ALL);
+                }
+            }
+        }
+        try {
+            final PackageSpec modulesAllPkg = modulesAll.build();
+            PackageXmlWriter.getInstance().write(modulesAllPkg, fpPackagesDir.resolve(modulesAllPkg.getName()).resolve(Constants.PACKAGE_XML));
+            fpBuilder.addPackage(modulesAllPkg);
+        } catch (XMLStreamException | IOException e) {
+            throw new MojoExecutionException("Failed to add package", e);
         }
     }
 
