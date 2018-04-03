@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 Red Hat, Inc. and/or its affiliates
+ * Copyright 2016-2018 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,16 +30,14 @@ import java.util.zip.ZipOutputStream;
 import org.jboss.jandex.Index;
 import org.jboss.jandex.IndexWriter;
 import org.jboss.jandex.Indexer;
-import org.jboss.logging.Logger;
+import org.jboss.provisioning.MessageWriter;
 
 /**
  * @author Stuart Douglas
  */
 class JandexIndexer {
 
-    private static final Logger log = Logger.getLogger(JandexIndexer.class);
-
-    public static void createIndex(File jarFile, OutputStream target) throws IOException {
+    public static void createIndex(File jarFile, OutputStream target, MessageWriter log) throws IOException {
         ZipOutputStream zo;
 
         Indexer indexer = new Indexer();
@@ -58,7 +56,7 @@ class JandexIndexer {
                         try {
                             indexer.index(stream);
                         } finally {
-                            safeClose(stream);
+                            safeClose(stream, log);
                         }
                     } catch (Exception e) {
                         String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
@@ -73,14 +71,14 @@ class JandexIndexer {
             Index index = indexer.complete();
             writer.write(index);
         } finally {
-            safeClose(zo);
-            safeClose(jar);
-            safeClose(target);
+            safeClose(zo, log);
+            safeClose(jar, log);
+            safeClose(target, log);
         }
     }
 
 
-    private static void safeClose(Closeable closeable) {
+    private static void safeClose(Closeable closeable, MessageWriter log) {
         if (closeable != null) {
             try {
                 closeable.close();

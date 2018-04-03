@@ -392,7 +392,7 @@ public class WfInstallPlugin extends ProvisioningPluginWithOptions implements In
                                     .append("-jandex")
                                     .append(artifactFileName.substring(lastDot)).toString()
                                 );
-                                JandexIndexer.createIndex(moduleArtifact.toFile(), new FileOutputStream(target));
+                                JandexIndexer.createIndex(moduleArtifact.toFile(), new FileOutputStream(target), runtime.getMessageWriter());
                                 finalFileName = target.getName();
                             } else {
                                 finalFileName = artifactFileName;

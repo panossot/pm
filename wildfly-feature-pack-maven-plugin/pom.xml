@@ -90,22 +90,14 @@
       <artifactId>feature-pack-build-maven-plugin</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.io7m.xom</groupId>
-      <artifactId>xom</artifactId>
-      <exclusions>
-        <exclusion>
-          <groupId>xalan</groupId>
-          <artifactId>xalan</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>xerces</groupId>
-          <artifactId>xercesImpl</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>xml-apis</groupId>
-          <artifactId>xml-apis</artifactId>
-        </exclusion>
-      </exclusions>
+      <groupId>org.jboss.pm</groupId>
+      <artifactId>wildfly-feature-spec-gen</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.wildfly.core</groupId>
+      <artifactId>wildfly-embedded</artifactId>
+      <scope>provided</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.maven.shared</groupId>

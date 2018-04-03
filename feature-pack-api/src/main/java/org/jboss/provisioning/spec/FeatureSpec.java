@@ -78,6 +78,10 @@ public class FeatureSpec extends PackageDepsSpec {
             return this;
         }
 
+        public boolean hasParam(String name) {
+            return params.containsKey(name);
+        }
+
         public Builder addParam(FeatureParameterSpec param) throws ProvisioningDescriptionException {
             if(params.containsKey(param.name)) {
                 throw new ProvisioningDescriptionException("Duplicate parameter " + param + " for feature " + name);

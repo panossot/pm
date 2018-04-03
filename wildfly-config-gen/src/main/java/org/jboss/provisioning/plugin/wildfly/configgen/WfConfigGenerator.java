@@ -18,10 +18,10 @@
 package org.jboss.provisioning.plugin.wildfly.configgen;
 
 import java.io.IOException;
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import org.jboss.as.controller.client.ModelControllerClient;
@@ -32,7 +32,6 @@ import org.jboss.provisioning.MessageWriter;
 import org.jboss.provisioning.ProvisioningException;
 import org.jboss.provisioning.runtime.ProvisioningRuntime;
 import org.jboss.provisioning.state.ProvisionedConfig;
-import org.jboss.provisioning.util.PmCollections;
 import org.wildfly.core.embedded.EmbeddedManagedProcess;
 import org.wildfly.core.embedded.EmbeddedProcessFactory;
 import org.wildfly.core.embedded.EmbeddedProcessStartException;
@@ -85,13 +84,13 @@ public class WfConfigGenerator {
                     stopEmbedded();
                 }
             } finally {
-                Set<String> toClear = Collections.emptySet();
+                final List<String> toClear = new ArrayList<>();
                 for (Map.Entry<?, ?> prop : System.getProperties().entrySet()) {
                     final Object value = originalProps.get(prop.getKey());
                     if (value != null) {
                         System.setProperty(prop.getKey().toString(), value.toString());
                     } else {
-                        toClear = PmCollections.add(toClear, prop.getKey().toString());
+                        toClear.add(prop.getKey().toString());
                     }
                 }
                 if (!toClear.isEmpty()) {

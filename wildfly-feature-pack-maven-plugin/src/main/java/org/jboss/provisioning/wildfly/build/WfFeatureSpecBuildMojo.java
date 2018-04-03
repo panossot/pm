@@ -16,10 +16,9 @@
  */
 package org.jboss.provisioning.wildfly.build;
 
-import static org.jboss.provisioning.Constants.PM_UNDEFINED;
-
 import java.io.File;
 import java.io.IOException;
+import java.net.URL;
 import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
@@ -27,14 +26,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Map.Entry;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import javax.xml.stream.XMLStreamException;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.model.Dependency;
@@ -63,15 +63,7 @@ import org.codehaus.plexus.archiver.manager.ArchiverManager;
 import org.codehaus.plexus.archiver.manager.NoSuchArchiverException;
 import org.codehaus.plexus.components.io.fileselectors.IncludeExcludeFileSelector;
 import org.codehaus.plexus.util.StringUtils;
-import org.jboss.provisioning.ProvisioningDescriptionException;
 import org.jboss.provisioning.ProvisioningException;
-import org.jboss.provisioning.spec.CapabilitySpec;
-import org.jboss.provisioning.spec.FeatureAnnotation;
-import org.jboss.provisioning.spec.FeatureDependencySpec;
-import org.jboss.provisioning.spec.FeatureParameterSpec;
-import org.jboss.provisioning.spec.FeatureReferenceSpec;
-import org.jboss.provisioning.spec.FeatureSpec;
-import org.jboss.provisioning.spec.PackageDependencySpec;
 import org.jboss.provisioning.util.IoUtils;
 
 /**
@@ -80,12 +72,6 @@ import org.jboss.provisioning.util.IoUtils;
  */
 @Mojo(name = "wf-spec", requiresDependencyResolution = ResolutionScope.RUNTIME, defaultPhase = LifecyclePhase.GENERATE_RESOURCES)
 public class WfFeatureSpecBuildMojo extends AbstractMojo {
-    // Feature annotation names and elements
-    private static final String ADDR_PARAMS = "addr-params";
-    private static final String ADDR_PARAMS_MAPPING = "addr-params-mapping";
-    private static final String EXTENSION = "extension";
-    private static final String HOST_PREFIX = "host.";
-    private static final String PROFILE_PREFIX = "profile.";
 
     private static final String MODULES = "modules";
 
@@ -124,11 +110,15 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
+
+        final long startTime = System.currentTimeMillis();
+
         Path tmpModules = null;
         Properties props = new Properties();
+        int specsTotal = -1;
         try {
             tmpModules = Files.createTempDirectory(MODULES);
-            doExecute(tmpModules);
+            specsTotal = doExecute(tmpModules);
         } catch (RuntimeException | Error | MojoExecutionException | MojoFailureException e) {
             throw e;
         } catch (IOException | MavenFilteringException ex) {
@@ -136,101 +126,63 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
         } finally {
             clearXMLConfiguration(props);
             IoUtils.recursiveDelete(tmpModules);
+
+            if(specsTotal >= 0) {
+                final long totalTime = System.currentTimeMillis() - startTime;
+                final long secs = totalTime / 1000;
+                getLog().info("Generated " + specsTotal + " feature specs in " + secs + "." + (totalTime - secs * 1000) + " secs");
+            }
         }
     }
 
-    private void doExecute(Path tmpModules) throws MojoExecutionException, MojoFailureException, MavenFilteringException, IOException {
-        List<Artifact> featurePackArtifacts = new ArrayList<>();
-        Map<String, String> inheritedFeatures = new HashMap<>();
-        if (featurePacks != null && !featurePacks.isEmpty()) {
-            IncludeExcludeFileSelector selector = new IncludeExcludeFileSelector();
-            selector.setIncludes(new String[]{"**/**/module/modules/**/*", "features/**"});
-            IncludeExcludeFileSelector[] selectors = new IncludeExcludeFileSelector[]{selector};
-            for (ArtifactItem fp : featurePacks) {
-                final Artifact fpArtifact = findArtifact(fp);
-                if (fpArtifact != null) {
-                    featurePackArtifacts.add(fpArtifact);
-                    File archive = fpArtifact.getFile();
-                    Path tmpArchive = Files.createTempDirectory(fp.toString());
-                    try {
-                        UnArchiver unArchiver;
-                        try {
-                            unArchiver = archiverManager.getUnArchiver(fpArtifact.getType());
-                            debug("Found unArchiver by type: %s", unArchiver);
-                        } catch (NoSuchArchiverException e) {
-                            unArchiver = archiverManager.getUnArchiver(archive);
-                            debug("Found unArchiver by extension: %s", unArchiver);
-                        }
-                        unArchiver.setFileSelectors(selectors);
-                        unArchiver.setSourceFile(archive);
-                        unArchiver.setDestDirectory(tmpArchive.toFile());
-                        unArchiver.extract();
-                        final String featurePackName = fpArtifact.getGroupId() + ':' + fpArtifact.getArtifactId();
-                        try (Stream<Path> children = Files.list(tmpArchive.resolve("features"))) {
-                            List<String> features = children.map(Path::getFileName).map(Path::toString).collect(Collectors.toList());
-                            for (String feature : features) {
-                                inheritedFeatures.put(feature, featurePackName);
-                            }
-                        }
-                        setModules(tmpArchive, tmpModules.resolve(MODULES));
-                    } catch (NoSuchArchiverException ex) {
-                        getLog().warn(ex);
-                    } finally {
-                        IoUtils.recursiveDelete(tmpArchive);
-                    }
-                } else {
-                    getLog().warn("No artifact was found for " + fp);
-                }
-            }
-        }
-        if (externalArtifacts != null && !externalArtifacts.isEmpty()) {
-            for (ExternalArtifact fp : externalArtifacts) {
-                IncludeExcludeFileSelector selector = new IncludeExcludeFileSelector();
-                selector.setIncludes(StringUtils.split(fp.getIncludes(), ","));
-                selector.setExcludes(StringUtils.split(fp.getExcludes(), ","));
-                IncludeExcludeFileSelector[] selectors = new IncludeExcludeFileSelector[]{selector};
-                final Artifact fpArtifact = findArtifact(fp.getArtifactItem());
-                if (fpArtifact != null) {
-                    featurePackArtifacts.add(fpArtifact);
-                    File archive = fpArtifact.getFile();
-                    Path target = tmpModules.resolve(MODULES).resolve(fp.getToLocation());
-                    Files.createDirectories(target);
-                    try {
-                        UnArchiver unArchiver;
-                        try {
-                            unArchiver = archiverManager.getUnArchiver(fpArtifact.getType());
-                            debug("Found unArchiver by type: %s", unArchiver);
-                        } catch (NoSuchArchiverException e) {
-                            unArchiver = archiverManager.getUnArchiver(archive);
-                            debug("Found unArchiver by extension: %s", unArchiver);
-                        }
-                        unArchiver.setFileSelectors(selectors);
-                        unArchiver.setSourceFile(archive);
-                        unArchiver.setDestDirectory(target.toFile());
-                        unArchiver.extract();
-                    } catch (NoSuchArchiverException ex) {
-                        getLog().warn(ex);
-                    }
-                } else {
-                    getLog().warn("No artifact was found for " + fp);
-                }
-            }
-        }
-        Path wildfly = outputDirectory.toPath().resolve("wildfly");
+    private int doExecute(Path tmpModules) throws MojoExecutionException, MojoFailureException, MavenFilteringException, IOException {
+
+        final Path wildfly = outputDirectory.toPath().resolve("wildfly");
         Files.createDirectories(wildfly.resolve("standalone").resolve("configuration"));
         Files.createDirectories(wildfly.resolve("domain").resolve("configuration"));
         Files.createDirectories(wildfly.resolve("bin"));
         Files.createFile(wildfly.resolve("bin").resolve("jboss-cli-logging.properties"));
         copyJbossModule(wildfly);
-        Map<String, Artifact> allArtifacts = listArtifacts(featurePackArtifacts);
-        ModuleXmlVersionResolver.filterAndConvertModules(tmpModules, wildfly.resolve(MODULES), allArtifacts, getLog());
+
+        final List<Artifact> featurePackArtifacts = new ArrayList<>();
+        final Set<String> inheritedFeatures = getInheritedFeatures(tmpModules, featurePackArtifacts);
+        final Map<String, Artifact> buildArtifacts = collectBuildArtifacts(tmpModules, featurePackArtifacts);
+
+        ModuleXmlVersionResolver.filterAndConvertModules(tmpModules, wildfly.resolve(MODULES), buildArtifacts, getLog());
         for (Resource resource : project.getResources()) {
             Path resourceDir = Paths.get(resource.getDirectory());
             if (Files.exists(resourceDir.resolve(MODULES))) {
-                ModuleXmlVersionResolver.filterAndConvertModules(resourceDir.resolve(MODULES), wildfly.resolve(MODULES), allArtifacts, getLog());
+                ModuleXmlVersionResolver.filterAndConvertModules(resourceDir.resolve(MODULES), wildfly.resolve(MODULES), buildArtifacts, getLog());
             }
         }
-        List<String> lines = new ArrayList<>(standaloneExtensions.size() + 5);
+        addBasicConfigs(wildfly);
+
+        final Artifact pluginArtifact = project.getPluginArtifactMap().get("org.jboss.pm:wildfly-feature-pack-maven-plugin");
+        final ArtifactItem item = new ArtifactItem();
+        item.setArtifactId("wildfly-feature-spec-gen");
+        item.setGroupId(pluginArtifact.getGroupId());
+        item.setVersion(pluginArtifact.getVersion());
+        final File itemFile = findArtifact(item).getFile();
+
+        final List<URL> buildCp = new ArrayList<>(buildArtifacts.size());
+        buildCp.add(itemFile.toURI().toURL());
+        for(Artifact artifact : buildArtifacts.values()) {
+            buildCp.add(artifact.getFile().toURI().toURL());
+        }
+
+        try {
+            return FeatureSpecGeneratorInvoker.generateSpecs(wildfly, inheritedFeatures, outputDirectory.toPath(),
+                    buildCp.toArray(new URL[buildCp.size()]),
+                    getLog());
+        } catch (ProvisioningException e) {
+            throw new MojoExecutionException("Feature spec generator failed", e);
+        } finally {
+            IoUtils.recursiveDelete(wildfly);
+        }
+    }
+
+    private void addBasicConfigs(final Path wildfly) throws IOException {
+        final List<String> lines = new ArrayList<>(standaloneExtensions.size() + 5);
         lines.add("<?xml version='1.0' encoding='UTF-8'?>");
         lines.add("<server xmlns=\"urn:jboss:domain:6.0\">");
         lines.add("<extensions>");
@@ -240,11 +192,8 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
         lines.add("</extensions>");
         lines.add("</server>");
         Files.write(wildfly.resolve("standalone").resolve("configuration").resolve("standalone.xml"), lines);
-        System.setProperty("org.wildfly.logging.skipLogManagerCheck", "true");
-        System.setProperty("java.util.logging.manager", "org.jboss.logmanager.LogManager");
-        List<FeatureSpec> standaloneFeatureSpecs = EmbeddedServerRunner.readStandaloneFeatures(wildfly, inheritedFeatures);
 
-        lines = new ArrayList<>(domainExtensions.size() + 8);
+        lines.clear();
         lines.add("<?xml version='1.0' encoding='UTF-8'?>");
         lines.add("<domain xmlns=\"urn:jboss:domain:6.0\">");
         lines.add("<extensions>");
@@ -254,7 +203,8 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
         lines.add("</extensions>");
         lines.add("</domain>");
         Files.write(wildfly.resolve("domain").resolve("configuration").resolve("domain.xml"), lines);
-        lines = new ArrayList<>(14);
+
+        lines.clear();
         lines.add("<?xml version='1.0' encoding='UTF-8'?>");
         lines.add("<host xmlns=\"urn:jboss:domain:6.0\" name=\"master\">");
         lines.add("<extensions>");
@@ -269,196 +219,106 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
         lines.add("</domain-controller>");
         lines.add("</host>");
         Files.write(wildfly.resolve("domain").resolve("configuration").resolve("host.xml"), lines);
-        System.setProperty("org.wildfly.logging.skipLogManagerCheck", "true");
-        System.setProperty("java.util.logging.manager", "org.jboss.logmanager.LogManager");
-        List<FeatureSpec> domainFeatureSpecs = EmbeddedServerRunner.readDomainFeatures(wildfly, inheritedFeatures);
-        Map<String, FeatureSpec> domainFPs = new HashMap<>(domainFeatureSpecs.size());
-        Map<String, FeatureSpec> hostFPs = new HashMap<>(domainFeatureSpecs.size());
-        for (FeatureSpec spec : domainFeatureSpecs) {
-            if (spec.getName().startsWith("host.subsystem")) {
-                hostFPs.put(spec.getName().substring(HOST_PREFIX.length()), spec);
-            }
-        }
-        for (FeatureSpec spec : domainFeatureSpecs) {
-            String simplifiedSpecName = spec.getName().startsWith(PROFILE_PREFIX) ? spec.getName().substring(PROFILE_PREFIX.length()) : spec.getName();
-            domainFPs.put(simplifiedSpecName, spec);
-        }
-        try {
-            List<FeatureSpec> resultingSpecs = new ArrayList<>();
-            for (FeatureSpec spec : standaloneFeatureSpecs) {
-                String specName = spec.getName();
-                if (domainFPs.containsKey(specName)) {
-                    FeatureSpec domainSpec = domainFPs.get(specName);
-                    domainFPs.remove(specName);
-                    debug("############ Comparing %s with %s", specName, domainSpec.getName());
-                    if (FeatureSpecFilter.areIdentical(spec, domainSpec, getLog())) {
-                        debug("-------------%s and %s are IDENTICAL", specName, domainSpec.getName());
-                    } else {
-                        getLog().warn(specName + " and " + domainSpec.getName() + " are DIFFERENT");
-                    }
-                    FeatureSpec hostSpec = hostFPs.get(specName);
-                    boolean mergeHost = false;
-                    String origin = null;
-                    if (hostSpec != null) {
-                        debug("############ Comparing %s with %s", specName, hostSpec.getName());
-                        if (FeatureSpecFilter.areIdentical(spec, hostSpec, getLog())) {
-                            debug("-------------%s and %s are IDENTICAL", specName, hostSpec.getName());
-                            mergeHost = true;
-                            domainFPs.remove(hostSpec.getName());
-                        } else {
-                            getLog().warn(specName + " and " + hostSpec.getName() + " are DIFFERENT");
-                        }
-                        try {
-                            origin = hostSpec.getFeatureRef("host").getOrigin();
-                        } catch (ProvisioningDescriptionException ex) {
-                            origin = null;
-                        }
-                    }
-                    resultingSpecs.add(mergeFeatureSpecs(spec, domainSpec, mergeHost, origin));
-                } else {
-                    getLog().warn("******** No domain spec found for " + specName);
-                    resultingSpecs.add(spec);
-                }
-            }
-            if(domainFPs.containsKey("host.extension")) {
-                domainFPs.put("host.extension", updateHostExtension(domainFPs.get("host.extension")));
-            }
-            resultingSpecs.addAll(domainFPs.values());
-            FeatureSpecExporter.saveFeatureSpecs(outputDirectory.toPath(), resultingSpecs);
-            for (String inheritedFeature : inheritedFeatures.keySet()) {
-                IoUtils.recursiveDelete(outputDirectory.toPath().resolve(inheritedFeature));
-            }
-        } catch (ProvisioningException | XMLStreamException ex) {
-            throw new MojoExecutionException(ex.getMessage(), ex);
-        }
-
-        IoUtils.recursiveDelete(wildfly);
-    }
-    private FeatureSpec updateHostExtension(FeatureSpec hostExtensionSpec) throws ProvisioningDescriptionException {
-        FeatureSpec.Builder builder = FeatureSpec.builder(hostExtensionSpec.getName());
-        for (FeatureAnnotation annotation : hostExtensionSpec.getAnnotations()) {
-            builder.addAnnotation(annotation);
-        }
-        for (CapabilitySpec cap : hostExtensionSpec.getProvidedCapabilities()) {
-            builder.providesCapability(cap);
-        }
-        for (CapabilitySpec cap : hostExtensionSpec.getRequiredCapabilities()) {
-            builder.requiresCapability(cap);
-        }
-        for (FeatureDependencySpec dep : hostExtensionSpec.getFeatureDeps()) {
-            builder.addFeatureDep(dep);
-        }
-        for (FeatureReferenceSpec ref : hostExtensionSpec.getFeatureRefs()) {
-             if ("host".equals(ref.getName())) {
-                FeatureReferenceSpec.Builder refBuilder = FeatureReferenceSpec.builder(ref.getName());
-                refBuilder.setName(ref.getName());
-                refBuilder.setInclude(ref.isInclude());
-                refBuilder.setNillable(true);
-                refBuilder.setOrigin(ref.getOrigin());
-                if (ref.hasMappedParams()) {
-                    for (Entry<String, String> mappedParam : ref.getMappedParams().entrySet()) {
-                        refBuilder.mapParam(mappedParam.getKey(), mappedParam.getValue());
-                    }
-                }
-                builder.addFeatureRef(refBuilder.build());
-            } else {
-                    builder.addFeatureRef(ref);
-            }
-        }
-        for (FeatureParameterSpec param : hostExtensionSpec.getParams().values()) {
-            builder.addParam(param);
-        }
-        return builder.build();
     }
 
-    private FeatureSpec mergeFeatureSpecs(FeatureSpec spec, FeatureSpec domainSpec, boolean withHost, String origin) throws ProvisioningDescriptionException {
-        FeatureSpec.Builder builder = FeatureSpec.builder(spec.getName());
-        for (FeatureAnnotation annotation : domainSpec.getAnnotations()) {
-            FeatureAnnotation mergedAnnotation;
-            if (withHost) {
-                mergedAnnotation = new FeatureAnnotation(annotation.getName());
-                for (Entry<String, String> elt : annotation.getElements().entrySet()) {
-                    switch (elt.getKey()) {
-                        case ADDR_PARAMS:
-                            mergedAnnotation.setElement(ADDR_PARAMS, "host," + elt.getValue());
-                            break;
-                        case ADDR_PARAMS_MAPPING:
-                            mergedAnnotation.setElement(ADDR_PARAMS_MAPPING, "host," + elt.getValue());
-                            break;
-                        default:
-                            mergedAnnotation.setElement(elt.getKey(), elt.getValue());
-                            break;
-                    }
-                }
-            } else {
-                mergedAnnotation = annotation;
+    private Map<String, Artifact> collectBuildArtifacts(Path tmpModules, List<Artifact> featurePackArtifacts)
+            throws MojoExecutionException, IOException {
+        Map<String, Artifact> artifacts = new HashMap<>();
+        for (Artifact artifact : project.getArtifacts()) {
+            artifacts.put(getArtifactKey(artifact), artifact);
+        }
+        for (Artifact featurePackArtifact : featurePackArtifacts) {
+            collectDepArtifacts(artifacts, featurePackArtifact);
+        }
+        if (externalArtifacts == null || externalArtifacts.isEmpty()) {
+            return artifacts;
+        }
+        for (ExternalArtifact fp : externalArtifacts) {
+            IncludeExcludeFileSelector selector = new IncludeExcludeFileSelector();
+            selector.setIncludes(StringUtils.split(fp.getIncludes(), ","));
+            selector.setExcludes(StringUtils.split(fp.getExcludes(), ","));
+            IncludeExcludeFileSelector[] selectors = new IncludeExcludeFileSelector[] { selector };
+            final Artifact fpArtifact = findArtifact(fp.getArtifactItem());
+            if (fpArtifact == null) {
+                getLog().warn("No artifact was found for " + fp);
+                continue;
             }
-            builder.addAnnotation(mergedAnnotation);
-        }
-        for (CapabilitySpec cap : domainSpec.getProvidedCapabilities()) {
-            builder.providesCapability(cap);
-        }
-        for (CapabilitySpec cap : domainSpec.getRequiredCapabilities()) {
-            builder.requiresCapability(cap);
-        }
-        for (FeatureDependencySpec dep : domainSpec.getFeatureDeps()) {
-            builder.addFeatureDep(dep);
-        }
-        for (FeatureReferenceSpec ref : domainSpec.getFeatureRefs()) {
-            if (ref.getName().startsWith(PROFILE_PREFIX)) {
-                FeatureReferenceSpec.Builder refBuilder = FeatureReferenceSpec.builder(ref.getName().substring(PROFILE_PREFIX.length()));
-                refBuilder.setName(ref.getName().substring(PROFILE_PREFIX.length()));
-                refBuilder.setInclude(ref.isInclude());
-                refBuilder.setNillable(ref.isNillable());
-                refBuilder.setOrigin(ref.getOrigin());
-                if (ref.hasMappedParams()) {
-                    for (Entry<String, String> mappedParam : ref.getMappedParams().entrySet()) {
-                        refBuilder.mapParam(mappedParam.getKey(), mappedParam.getValue());
-                    }
+            collectDepArtifacts(artifacts, fpArtifact);
+            File archive = fpArtifact.getFile();
+            Path target = tmpModules.resolve(MODULES).resolve(fp.getToLocation());
+            Files.createDirectories(target);
+            try {
+                UnArchiver unArchiver;
+                try {
+                    unArchiver = archiverManager.getUnArchiver(fpArtifact.getType());
+                    debug("Found unArchiver by type: %s", unArchiver);
+                } catch (NoSuchArchiverException e) {
+                    unArchiver = archiverManager.getUnArchiver(archive);
+                    debug("Found unArchiver by extension: %s", unArchiver);
                 }
-                builder.addFeatureRef(refBuilder.build());
-            } else if (ref.getName().startsWith(HOST_PREFIX)) {
-                FeatureReferenceSpec.Builder refBuilder = FeatureReferenceSpec.builder(ref.getName().substring(HOST_PREFIX.length()));
-                refBuilder.setName(ref.getName().substring(HOST_PREFIX.length()));
-                refBuilder.setInclude(ref.isInclude());
-                refBuilder.setNillable(ref.isNillable());
-                refBuilder.setOrigin(ref.getOrigin());
-                if (ref.hasMappedParams()) {
-                    for (Entry<String, String> mappedParam : ref.getMappedParams().entrySet()) {
-                        refBuilder.mapParam(mappedParam.getKey(), mappedParam.getValue());
-                    }
-                }
-                builder.addFeatureRef(refBuilder.build());
-            } else {
-                 if (withHost && EXTENSION.equals(ref.getName())) { //replacing extension with host extension
-                      FeatureReferenceSpec.Builder refBuilder = FeatureReferenceSpec.builder("host.extension");
-                    refBuilder.setName("host.extension");refBuilder.setInclude(ref.isInclude());
-                refBuilder.setNillable(ref.isNillable());
-                refBuilder.setOrigin(ref.getOrigin());
-                builder.addFeatureRef(refBuilder.build());
-                 } else {
-                    builder.addFeatureRef(ref);
-                 }
+                unArchiver.setFileSelectors(selectors);
+                unArchiver.setSourceFile(archive);
+                unArchiver.setDestDirectory(target.toFile());
+                unArchiver.extract();
+            } catch (NoSuchArchiverException ex) {
+                getLog().warn(ex);
             }
         }
-        for(String packageOrigin : spec.getPackageOrigins()) {
-            for(PackageDependencySpec packageDep : spec.getExternalPackageDeps(packageOrigin)) {
-                builder.addPackageDep(packageOrigin, packageDep);
+        return artifacts;
+    }
+
+    private void collectDepArtifacts(Map<String, Artifact> artifacts, Artifact artifact) throws MojoExecutionException {
+        for (ArtifactResult result : resolveDependencies(artifact)) {
+            Artifact dep = result.getArtifact();
+            artifacts.put(getArtifactKey(dep), dep);
+        }
+    }
+
+    private Set<String> getInheritedFeatures(Path tmpModules, List<Artifact> featurePackArtifacts)
+            throws MojoExecutionException, IOException {
+        if(featurePacks == null || featurePacks.isEmpty()) {
+            return Collections.emptySet();
+        }
+        final Set<String> inheritedFeatures = new HashSet<>(500);
+        IncludeExcludeFileSelector selector = new IncludeExcludeFileSelector();
+        selector.setIncludes(new String[] { "**/**/module/modules/**/*", "features/**" });
+        IncludeExcludeFileSelector[] selectors = new IncludeExcludeFileSelector[] { selector };
+        for (ArtifactItem fp : featurePacks) {
+            final Artifact fpArtifact = findArtifact(fp);
+            if (fpArtifact == null) {
+                getLog().warn("No artifact was found for " + fp);
+                continue;
+            }
+            featurePackArtifacts.add(fpArtifact);
+            File archive = fpArtifact.getFile();
+            Path tmpArchive = Files.createTempDirectory(fp.toString());
+            try {
+                UnArchiver unArchiver;
+                try {
+                    unArchiver = archiverManager.getUnArchiver(fpArtifact.getType());
+                    debug("Found unArchiver by type: %s", unArchiver);
+                } catch (NoSuchArchiverException e) {
+                    unArchiver = archiverManager.getUnArchiver(archive);
+                    debug("Found unArchiver by extension: %s", unArchiver);
+                }
+                unArchiver.setFileSelectors(selectors);
+                unArchiver.setSourceFile(archive);
+                unArchiver.setDestDirectory(tmpArchive.toFile());
+                unArchiver.extract();
+                try (Stream<Path> children = Files.list(tmpArchive.resolve("features"))) {
+                    List<String> features = children.map(Path::getFileName).map(Path::toString).collect(Collectors.toList());
+                    for (String feature : features) {
+                        inheritedFeatures.add(feature);
+                    }
+                }
+                setModules(tmpArchive, tmpModules.resolve(MODULES));
+            } catch (NoSuchArchiverException ex) {
+                getLog().warn(ex);
+            } finally {
+                IoUtils.recursiveDelete(tmpArchive);
             }
         }
-        for (PackageDependencySpec packageDep : spec.getLocalPackageDeps()) {
-            builder.addPackageDep(packageDep);
-        }
-        if(withHost) {
-            builder.addFeatureRef(FeatureReferenceSpec.builder("host").setNillable(true).setOrigin(origin).build());
-        }
-        for (FeatureParameterSpec param : domainSpec.getParams().values()) {
-            builder.addParam(param);
-        }
-        if (withHost) {
-            builder.addParam(FeatureParameterSpec.create("host", true, false, PM_UNDEFINED));
-        }
-        return builder.build();
+        return inheritedFeatures;
     }
 
     private void copyJbossModule(Path wildfly) throws IOException, MojoExecutionException {
@@ -530,31 +390,14 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
         }
     }
 
-    private Map<String, Artifact> listArtifacts(List<Artifact> featurePackArtifacts) throws MojoExecutionException {
-        Map<String, Artifact> artifacts = new HashMap<>();
-        for (Artifact artifact : project.getArtifacts()) {
-            final StringBuilder buf = new StringBuilder(artifact.getGroupId()).append(':').
-                    append(artifact.getArtifactId());
-            final String classifier = artifact.getClassifier();
-            if (classifier != null && !classifier.isEmpty()) {
-                buf.append("::").append(classifier);
-            } else {
-            }
-            artifacts.put(buf.toString(), artifact);
+    private String getArtifactKey(Artifact artifact) {
+        final StringBuilder buf = new StringBuilder(artifact.getGroupId()).append(':').
+                append(artifact.getArtifactId());
+        final String classifier = artifact.getClassifier();
+        if (classifier != null && !classifier.isEmpty()) {
+            buf.append("::").append(classifier);
         }
-        for (Artifact featurePackArtifact : featurePackArtifacts) {
-            for (ArtifactResult result : resolveDependencies(featurePackArtifact)) {
-                Artifact dep = result.getArtifact();
-                final StringBuilder buf = new StringBuilder(dep.getGroupId()).append(':').
-                        append(dep.getArtifactId());
-                final String classifier = dep.getClassifier();
-                if (classifier != null && !classifier.isEmpty()) {
-                    buf.append("::").append(classifier);
-                }
-                artifacts.put(buf.toString(), dep);
-            }
-        }
-        return artifacts;
+        return buf.toString();
     }
 
     private Iterable<ArtifactResult> resolveDependencies(Artifact artifact) throws MojoExecutionException {
