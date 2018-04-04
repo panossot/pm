@@ -211,7 +211,7 @@ public class WfProvisionedConfigHandler implements ProvisionedConfigHandler {
                     ++i;
                     continue;
                 }
-                attrValue.get(opParams.get(i++)).set(value.toString());
+                setOpParam(attrValue, opParams.get(i++), value.toString());
             }
             op.get(WfConstants.VALUE).set(attrValue);
             handleOp(op);
