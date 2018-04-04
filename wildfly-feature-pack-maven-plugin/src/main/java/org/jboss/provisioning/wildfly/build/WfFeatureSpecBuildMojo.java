@@ -376,6 +376,7 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
     }
 
     private Artifact findArtifact(ArtifactItem featurePack) throws MojoExecutionException {
+        resolveVersion(featurePack);
         try {
             ProjectBuildingRequest buildingRequest
                     = new DefaultProjectBuildingRequest(session.getProjectBuildingRequest());
@@ -398,6 +399,16 @@ public class WfFeatureSpecBuildMojo extends AbstractMojo {
             buf.append("::").append(classifier);
         }
         return buf.toString();
+    }
+
+
+    private void resolveVersion(ArtifactItem artifact) {
+        if(artifact.getVersion() == null) {
+            Artifact managedArtifact = this.project.getManagedVersionMap().get(artifact.getGroupId() + ':' + artifact.getArtifactId() + ':' + artifact.getType());
+            if(managedArtifact != null) {
+                artifact.setVersion(managedArtifact.getVersion());
+            }
+        }
     }
 
     private Iterable<ArtifactResult> resolveDependencies(Artifact artifact) throws MojoExecutionException {
