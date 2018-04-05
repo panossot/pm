@@ -261,6 +261,23 @@ class FeatureSpecNode {
             }
         }
 
+        if(standaloneAnnot.has("complex-attribute")) {
+            if(!domainAnnot.has("complex-attribute")) {
+                if(failIfDifferent) {
+                    throw new ProvisioningException("Domain annotation is missing complex-attribute element");
+                }
+                return false;
+            }
+            if(!domainAnnot.get("complex-attribute").equals(standaloneAnnot.get("complex-attribute"))) {
+                if(failIfDifferent) {
+                    throw new ProvisioningException("Annotation element 'complex-attribute' is set to " + standaloneAnnot.get("complex-attribute").asString() +
+                            " in the standalone feature spec and to " + domainAnnot.get("complex-attribute").asString() + " in the domain one");
+                }
+                return false;
+            }
+            ++checkedStandaloneElems;
+        }
+
         if(standaloneElems.size() > checkedStandaloneElems) {
             throw new ProvisioningException("Expected " + checkedStandaloneElems + " annotation elements in the standalone model but got " + standaloneElems);
         }
